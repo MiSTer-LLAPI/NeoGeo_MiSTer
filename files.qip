@@ -11,4 +11,5 @@ set_global_assignment -name QIP_FILE cpu/TV80/tv80.qip
 set_global_assignment -name QIP_FILE cpu/T80/T80.qip
 set_global_assignment -name VERILOG_FILE cpu/cpu_z80.v
 set_global_assignment -name VERILOG_FILE cpu/cpu_68k.v
+set_global_assignment -name SYSTEMVERILOG_FILE llapi.sv
 set_global_assignment -name SYSTEMVERILOG_FILE neogeo.sv

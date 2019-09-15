@@ -169,7 +169,6 @@ module emu
 );
 
 assign ADC_BUS  = 'Z;
-assign USER_OUT = '1;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
@@ -181,7 +180,7 @@ assign AUDIO_R = snd_right;
 assign LED_USER  = status[0];
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
-assign BUTTONS   = osd_btn;
+assign BUTTONS   = osd_btn | llapi_osd;
 
 assign VIDEO_ARX = status[17] ? 8'd16 : 8'd10;	// 320/32
 assign VIDEO_ARY = status[17] ? 8'd9  : 8'd7;	// 224/32
@@ -211,6 +210,11 @@ assign VIDEO_ARY = status[17] ? 8'd9  : 8'd7;	// 224/32
 // +   O   +  +  SYSTEM_MVS; 
 // +   +   O  O  SYSTEM_CDx;   
 
+// Status Bit Map:
+// 0         1         2         3 
+// 01234567890123456789012345678901
+// 0123456789ABCDEFGHIJKLMNOPQRSTUV
+//  XXXXXXXXXXXX XXXXXXXXX  XXXX X 
 `include "build_id.v"
 localparam CONF_STR = {
 	"NEOGEO;;",
@@ -243,6 +247,8 @@ localparam CONF_STR = {
 	"OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
 	"O56,Stereo Mix,none,25%,50%,100%;",
 	"-;",
+	"OU,Serial Mode,None,LLAPI;",
+	"-;",
 	"RE,Reset & apply;",  // decouple manual reset from system reset 
 	"J1,A,B,C,D,Start,Select,Coin,ABC;",	// ABC is a special key to press A+B+C at once, useful for
 	"V,v",`BUILD_DATE								// keyboards that don't allow more than 2 keypresses at once
@@ -255,7 +261,7 @@ wire locked;
 wire clk_sys;
 wire CLK_24M = counter_p[1];
 
-// 50MHz in, 4*24=96MHz out
+// 50MHz in, 4*24=96MHz out@rez
 // CAS latency = 2 (20.8ns)
 pll pll(
 	.refclk(CLK_50M),
@@ -398,6 +404,87 @@ always @(posedge clk_sys) begin
 		esc <= 0;
 	end
 end
+
+//////////////////   LLAPI   ///////////////////
+
+wire [31:0] llapi_buttons, llapi_buttons2;
+wire [71:0] llapi_analog, llapi_analog2;
+wire [7:0]  llapi_type, llapi_type2;
+wire llapi_en, llapi_en2;
+
+wire llapi_select = status[30];
+
+wire llapi_latch_o, llapi_latch_o2, llapi_data_o, llapi_data_o2;
+
+always_comb begin
+	USER_OUT = 6'b111111;
+	if (llapi_select) begin
+		USER_OUT[0] = llapi_latch_o;
+		USER_OUT[1] = llapi_data_o;
+		USER_OUT[2] = ~(llapi_select & ~OSD_STATUS);
+		USER_OUT[4] = llapi_latch_o2;
+		USER_OUT[5] = llapi_data_o2;
+	end
+end
+
+LLAPI llapi
+(
+	.CLK_50M(CLK_50M),
+	.LLAPI_SYNC(VSync),
+	.IO_LATCH_IN(USER_IN[0]),
+	.IO_LATCH_OUT(llapi_latch_o),
+	.IO_DATA_IN(USER_IN[1]),
+	.IO_DATA_OUT(llapi_data_o),
+	.ENABLE(llapi_select & ~OSD_STATUS),
+	.LLAPI_BUTTONS(llapi_buttons),
+	.LLAPI_ANALOG(llapi_analog),
+	.LLAPI_TYPE(llapi_type),
+	.LLAPI_EN(llapi_en)
+);
+
+LLAPI llapi2
+(
+	.CLK_50M(CLK_50M),
+	.LLAPI_SYNC(Vsync),
+	.IO_LATCH_IN(USER_IN[4]),
+	.IO_LATCH_OUT(llapi_latch_o2),
+	.IO_DATA_IN(USER_IN[5]),
+	.IO_DATA_OUT(llapi_data_o2),
+	.ENABLE(llapi_select & ~OSD_STATUS),
+	.LLAPI_BUTTONS(llapi_buttons2),
+	.LLAPI_ANALOG(llapi_analog2),
+	.LLAPI_TYPE(llapi_type2),
+	.LLAPI_EN(llapi_en2)
+);
+
+wire use_llapi = llapi_en && llapi_select;
+wire use_llapi2 = llapi_en2 && llapi_select;
+// Indexes:
+// 0 = D+    = P1 Latch
+// 1 = D-    = P1 Data
+// 2 = TX-   = LLAPI Enable
+// 3 = GND_d = N/C
+// 4 = RX+   = P2 Latch
+// 5 = RX-   = P2 Data
+
+//	"J1,A,B,C,D,Start,Select,Coin,ABC;"
+
+wire [15:0] joy_ll_a = { 4'b0000,
+	llapi_buttons[6], llapi_buttons[4], llapi_buttons[4], llapi_buttons[5],
+	llapi_buttons[3], llapi_buttons[2], llapi_buttons[1], llapi_buttons[0],
+	llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24]
+};
+
+wire [15:0] joy_ll_b = { 4'b0000,
+	llapi_buttons2[6], llapi_buttons2[4], llapi_buttons2[4], llapi_buttons2[5],
+	llapi_buttons2[3], llapi_buttons2[2], llapi_buttons2[1], llapi_buttons2[0],
+	llapi_buttons2[27], llapi_buttons2[26], llapi_buttons2[25], llapi_buttons2[24]
+};
+
+wire llapi_osd = (llapi_buttons[4] & llapi_buttons[5]) || (llapi_buttons2[4] & llapi_buttons2[5]);
+
+wire [15:0] joy_a = use_llapi  ? joy_ll_a : joystick_0;
+wire [15:0] joy_b = use_llapi2 ? joy_ll_b : joystick_1;
 
 //////////////////   Her Majesty   ///////////////////
 
@@ -1191,7 +1278,7 @@ end
 		.nDIPRD0(nDIPRD0), .nDIPRD1(nDIPRD1),
 		.nBITW0(nBITW0), .nBITWD0(nBITWD0),
 		.DIPSW({~status[9:8], 5'b11111, ~status[7]}),
-		.COIN1(~joystick_0[10]), .COIN2(~joystick_1[10]),
+		.COIN1(~joy_a[10]), .COIN2(~joy_b[10]),
 		.M68K_ADDR(M68K_ADDR[7:4]),
 		.M68K_DATA(M68K_DATA[7:0]),
 		.SYSTEMB(~nSYSTEM_G),
@@ -1228,8 +1315,8 @@ end
 		.nLSPOE(nLSPOE), .nLSPWE(nLSPWE),
 		.nCRDO(nCRDO), .nCRDW(nCRDW), .nCRDC(nCRDC),
 		.nSDW(nSDW),
-		.P1_IN(~{joystick_0[9:4] | {3{joystick_0[11]}}, joystick_0[0], joystick_0[1], joystick_0[2], joystick_0[3]}),
-		.P2_IN(~{joystick_1[9:4] | {3{joystick_1[11]}}, joystick_1[0], joystick_1[1], joystick_1[2], joystick_1[3]}),
+		.P1_IN(~{joy_a[9:4] | {3{joy_a[11]}}, joy_a[0], joy_a[1], joy_a[2], joy_a[3]}),
+		.P2_IN(~{joy_b[9:4] | {3{joy_b[11]}}, joy_b[0], joy_b[1], joy_b[2], joy_b[3]}),
 		.nCD1(nCD1), .nCD2(nCD2),
 		.nWP(0),			// Memory card is never write-protected
 		.nROMWAIT(1), .nPWAIT0(1), .nPWAIT1(1), .PDTACK(1),
