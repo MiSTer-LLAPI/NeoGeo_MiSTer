@@ -177,7 +177,7 @@ assign AUDIO_MIX = status[5:4];
 assign AUDIO_L = snd_left;
 assign AUDIO_R = snd_right;
 
-assign LED_USER  = status[0];
+assign LED_USER  = status[0] | bk_pending;
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 assign BUTTONS   = osd_btn | llapi_osd;
@@ -190,8 +190,8 @@ assign VIDEO_ARY = status[17] ? 8'd9  : 8'd7;	// 224/32
 // --AA-PSS -------- L--CGGDD DEEMVTTR
 //  :	status[0]		System Reset, used by the HPS, keep it there
 // T:	status[2:1]		System type, 0=Console, 1=Arcade, 2=CD, 3=CDZ
-// V: status[3]		Video mode
-// M: status[4]		Memory card presence
+// V:	status[3]		Video mode
+// M:	status[4]		Memory card presence
 // E:	status[6:5]		Stereo mix
 // D:	status[9:7]		DIP switches
 // G:	status[11:10]	Neo CD region
@@ -200,6 +200,7 @@ assign VIDEO_ARY = status[17] ? 8'd9  : 8'd7;	// 224/32
 //  :	status[13]		Primary SDRAM size 32MB/64MB
 //  :	status[14]		Manual Reset
 //  :	status[20:15]  OSD options
+// 0123456789 ABCDEFGHIJKLMNO
 
 // Conditional modification of the CONF strings chaining according to chosen system type
 // Con Arc CD CDz
@@ -238,15 +239,16 @@ localparam CONF_STR = {
 	"O3,Video Mode,NTSC,PAL;",
 	"-;",
 	"H0O4,Memory Card,Plugged,Unplugged;",
-	"RL,Load Memory Card;",
-	"RC,Save Memory Card;",
+	"RL,Reload Memory Card;",
+	"D4RC,Save Memory Card;",
+	"OO,Autosave,OFF,ON;",
 	"H1-;",
 	"H1OAB,Region,US,EU,JP,AS;",
 	"H1OF,CD lid,Opened,Closed;",
 	"H2-;",
-	"H2O7,DIP:Settings,OFF,ON;",
-	"H2O8,DIP:Freeplay,OFF,ON;",
-	"H2O9,DIP:Freeze,OFF,ON;",
+	"H2O7,[DIP] Settings,OFF,ON;",
+	"H2O8,[DIP] Freeplay,OFF,ON;",
+	"H2O9,[DIP] Freeze,OFF,ON;",
 	"-;",
 	"OG,Width,320px,304px;",
 	"OH,Aspect Ratio,Original,Wide;",
@@ -367,7 +369,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1), .VDNUM(2)) hps_io
 	.ps2_key(ps2_key),
 
 	.status(status),				// status read (32 bits)
-	.status_menumask({status[22], 11'd0, ~dbg_menu,~SYSTEM_MVS,~SYSTEM_CDx,SYSTEM_CDx}),
+	.status_menumask({status[22], 10'd0, bk_autosave | ~bk_pending, ~dbg_menu,~SYSTEM_MVS,~SYSTEM_CDx,SYSTEM_CDx}),
 
 	.RTC(rtc),
 	.sdram_sz(sdram_sz),
@@ -709,26 +711,31 @@ end
 	wire downloading = status[0];
 	reg bk_rd, bk_wr;
 	reg bk_ena = 0;
-	//reg sav_pending = 0;
-	//wire bk_change = 0; // TODO
+	reg bk_pending = 0;
+
+	wire bk_autosave = status[24];
+	// Memory write flag for backup memory & memory card
+	// (~nBWL | ~nBWU) : [AES] Unibios (set to MVS) softdip settings, [MVS] cab settings, dates, timer, high scores, saves, & bookkeeeping
+	// CARD_WE         : [AES/MVS] game saves and high scores
+	wire bk_change = ~nBWL | ~nBWU | CARD_WE;
+	wire memcard_change;
 
 	always @(posedge clk_sys) begin
 		reg old_downloading = 0;
-	//	reg old_change = 0;
 
 		old_downloading <= downloading;
 		if(~old_downloading & downloading) bk_ena <= 0;
 
-		//Save file always mounted in the end of downloading state.
+		// Save file always mounted in the end of downloading state.
 		if(downloading && img_mounted[0] && !img_readonly) bk_ena <= 1;
 
-	//	old_change <= bk_change;
-	//	if (~old_change & bk_change & ~OSD_STATUS) sav_pending <= status[13];
-	//	else if (bk_state) sav_pending <= 0;
+		// Determine whether file needs to be written
+		if (bk_change)     bk_pending <= 1;
+		else if (bk_state) bk_pending <= 0;
 	end
 
 	wire bk_load    = status[21];
-	wire bk_save    = status[12]; // | (sav_pending & OSD_STATUS);
+	wire bk_save    = status[12] | (bk_autosave & OSD_STATUS);
 	reg  bk_loading = 0;
 	reg  bk_state   = 0;
 
@@ -745,7 +752,7 @@ end
 		if(~old_ack & sd_ack) {bk_rd, bk_wr} <= 0;
 
 		if(!bk_state) begin
-			if(bk_ena & ((~old_load & bk_load) | (~old_save & bk_save))) begin
+			if(bk_ena & ((~old_load & bk_load) | (~old_save & bk_save & bk_pending))) begin
 				bk_state <= 1;
 				bk_loading <= bk_load;
 				sd_lba <= 0;
@@ -1230,7 +1237,7 @@ end
 	// Backup RAM
 	wire nBWL = nSRAMWEL | nSRAMWEN_G;
 	wire nBWU = nSRAMWEU | nSRAMWEN_G;
-	
+
 	wire [15:0] sd_buff_din_sram;
 	backup BACKUP(
 		.CLK_24M(CLK_24M),
