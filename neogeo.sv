@@ -468,14 +468,16 @@ LLAPI llapi2
 
 reg llapi_button_pressed, llapi_button_pressed2;
 
-always @(posedge clk_sys) begin
+always @(posedge CLK_50M) begin
         if (nRESET) begin
                 llapi_button_pressed  <= 0;
                 llapi_button_pressed2 <= 0;
-        end else if (|llapi_buttons)
-                llapi_button_pressed  <= 1;
-        else if (|llapi_buttons2)
-                llapi_button_pressed2 <= 1;
+	end else begin
+	       	if (|llapi_buttons)
+                	llapi_button_pressed  <= 1;
+        	if (|llapi_buttons2)
+                	llapi_button_pressed2 <= 1;
+	end
 end
 
 // controller id is 0 if there is either an Atari controller or no controller
@@ -510,7 +512,7 @@ always_comb begin
 			llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // dpad
 		};
 	// Neo Geo controller mapping
-	end else if(llapi_type == 49) begin
+	end else if(llapi_type == 49 || llapi_type == 56 || llapi_type == 57) begin
 		joy_ll_a = { 4'b0000,
 			llapi_buttons[6],  llapi_buttons[4],  llapi_buttons[4],  llapi_buttons[5], // ABC, Coin, Select, Start
 			llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[1],  llapi_buttons[0], // D,   C,    B,      A
@@ -543,7 +545,7 @@ always_comb begin
 			llapi_buttons2[27], llapi_buttons2[26], llapi_buttons2[25], llapi_buttons2[24] // dpad
 		};
 	// Neo Geo controller mapping
-	end else if(llapi_type2 == 49) begin
+	end else if(llapi_type2 == 49 || llapi_type2 == 56 || llapi_type2 == 57) begin
 		joy_ll_b = { 4'b0000,
 			llapi_buttons2[6],  llapi_buttons2[4],  llapi_buttons2[4],  llapi_buttons2[5], // ABC, Coin, Select, Start
 			llapi_buttons2[3],  llapi_buttons2[2],  llapi_buttons2[1],  llapi_buttons2[0], // D,   C,    B,      A
