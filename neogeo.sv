@@ -275,9 +275,7 @@ pll pll(
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk_sys),
-	.outclk_1(SDRAM_CLK),	// Phase shifted
-	.outclk_2(SDRAM2_CLK),	// Phase shifted
-	.outclk_3(CLK_VIDEO),
+	.outclk_1(CLK_VIDEO),
 	.locked(locked)
 );
 
@@ -717,8 +715,16 @@ end
 	// Memory write flag for backup memory & memory card
 	// (~nBWL | ~nBWU) : [AES] Unibios (set to MVS) softdip settings, [MVS] cab settings, dates, timer, high scores, saves, & bookkeeeping
 	// CARD_WE         : [AES/MVS] game saves and high scores
-	wire bk_change = ~nBWL | ~nBWU | CARD_WE;
+	wire bk_change = sram_slot_we | CARD_WE;
 	wire memcard_change;
+
+	reg sram_slot_we;
+	always @(posedge clk_sys) begin
+		sram_slot_we <= 0;
+		if(~nBWL | ~nBWU) begin
+			sram_slot_we <= (M68K_ADDR[15:1] >= 'h190 && M68K_ADDR[15:1] < 'h4190);
+		end
+	end
 
 	always @(posedge clk_sys) begin
 		reg old_downloading = 0;
@@ -1021,6 +1027,7 @@ end
 	wire [63:0] sdram1_dout, sdram2_dout;
 
 	sdram ram1(
+		.SDRAM_CLK(SDRAM_CLK),
 		.SDRAM_CKE(SDRAM_CKE),
 		.SDRAM_A(SDRAM_A),
 		.SDRAM_BA(SDRAM_BA),
@@ -1055,6 +1062,7 @@ end
 
 `ifdef DUAL_SDRAM
 	sdram ram2(
+		.SDRAM_CLK(SDRAM2_CLK),
 		.SDRAM_A(SDRAM2_A),
 		.SDRAM_BA(SDRAM2_BA),
 		.SDRAM_DQ(SDRAM2_DQ),
@@ -1093,6 +1101,7 @@ end
 	assign sdr2_cprd = 0;
 	assign sdr2_cpbusy = 0;
 	assign sdr2_en = 0;
+	assign SDRAM2_CLK = 1'bZ;
 `endif
 
 	assign sdram_dout  = sdr_pri_sel ? sdram1_dout : sdram2_dout;
