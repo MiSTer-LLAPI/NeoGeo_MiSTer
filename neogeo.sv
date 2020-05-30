@@ -518,11 +518,18 @@ always_comb begin
 			llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[1],  llapi_buttons[0], // D,   C,    B,      A
 			llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // dpad
 		};
+	// Gamecube controller mapping
+	end else if(llapi_type == 9) begin
+		joy_ll_a = { 4'b0000,
+			llapi_buttons[7],  llapi_buttons[4],  llapi_buttons[4],  llapi_buttons[5], // ABC, Coin, Select, Start
+			llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[0],  llapi_buttons[1], // D,   C,    B,      A
+			llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // dpad
+		};
 	// SNES controller mapping and default 
 	end else begin
 		joy_ll_a = { 4'b0000,
 			llapi_buttons[7],  llapi_buttons[4],  llapi_buttons[4],  llapi_buttons[5], // ABC, Coin, Select, Start
-			llapi_buttons[1],  llapi_buttons[3],  llapi_buttons[0],  llapi_buttons[2], // D,   C,    B,      A
+			llapi_buttons[3],  llapi_buttons[2],  llapi_buttons[1],  llapi_buttons[0], // D,   C,    B,      A
 			llapi_buttons[27], llapi_buttons[26], llapi_buttons[25], llapi_buttons[24] // dpad
 		};
 	end
@@ -551,11 +558,18 @@ always_comb begin
 			llapi_buttons2[3],  llapi_buttons2[2],  llapi_buttons2[1],  llapi_buttons2[0], // D,   C,    B,      A
 			llapi_buttons2[27], llapi_buttons2[26], llapi_buttons2[25], llapi_buttons2[24] // dpad
 		};
+	// Gamecube controller mapping
+	end else if(llapi_type2 == 9) begin
+		joy_ll_b = { 4'b0000,
+			llapi_buttons2[7],  llapi_buttons2[4],  llapi_buttons2[4],  llapi_buttons2[5], // ABC, Coin, Select, Start
+			llapi_buttons2[3],  llapi_buttons2[2],  llapi_buttons2[0],  llapi_buttons2[1], // D,   C,    B,      A
+			llapi_buttons2[27], llapi_buttons2[26], llapi_buttons2[25], llapi_buttons2[24] // dpad
+		};
 	// SNES controller mapping and default 
 	end else begin
 		joy_ll_b = { 4'b0000,
 			llapi_buttons2[7],  llapi_buttons2[4],  llapi_buttons2[4],  llapi_buttons2[5], // ABC, Coin, Select, Start
-			llapi_buttons2[1],  llapi_buttons2[3],  llapi_buttons2[0],  llapi_buttons2[2], // D,   C,    B,      A
+			llapi_buttons2[3],  llapi_buttons2[2],  llapi_buttons2[1],  llapi_buttons2[0], // D,   C,    B,      A
 			llapi_buttons2[27], llapi_buttons2[26], llapi_buttons2[25], llapi_buttons2[24] // dpad
 		};
 	end
