@@ -441,7 +441,7 @@ end
 LLAPI llapi
 (
 	.CLK_50M(CLK_50M),
-	.LLAPI_SYNC(VSync),
+	.LLAPI_SYNC(~nBNKB),
 	.IO_LATCH_IN(USER_IN[0]),
 	.IO_LATCH_OUT(llapi_latch_o),
 	.IO_DATA_IN(USER_IN[1]),
@@ -456,7 +456,7 @@ LLAPI llapi
 LLAPI llapi2
 (
 	.CLK_50M(CLK_50M),
-	.LLAPI_SYNC(VSync),
+	.LLAPI_SYNC(~nBNKB),
 	.IO_LATCH_IN(USER_IN[4]),
 	.IO_LATCH_OUT(llapi_latch_o2),
 	.IO_DATA_IN(USER_IN[5]),
