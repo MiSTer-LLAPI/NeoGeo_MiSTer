@@ -57,8 +57,9 @@ module emu
 	output        CE_PIXEL,
 
 	//Video aspect ratio for HDMI. Most retro systems have ratio 4:3.
-	output [11:0] VIDEO_ARX,
-	output [11:0] VIDEO_ARY,
+	//if VIDEO_ARX[12] or VIDEO_ARY[12] is set then [11:0] contains scaled size instead of aspect ratio.
+	output [12:0] VIDEO_ARX,
+	output [12:0] VIDEO_ARY,
 
 	output  [7:0] VGA_R,
 	output  [7:0] VGA_G,
@@ -69,6 +70,9 @@ module emu
 	output        VGA_F1,
 	output [1:0]  VGA_SL,
 	output        VGA_SCALER, // Force VGA scaler
+
+	input  [11:0] HDMI_WIDTH,
+	input  [11:0] HDMI_HEIGHT,
 
 `ifdef USE_FB
 	// Use framebuffer in DDRAM (USE_FB=1 in qsf)
@@ -202,10 +206,27 @@ assign LED_POWER = 0;
 assign BUTTONS   = osd_btn | llapi_osd;
 assign VGA_SCALER= 0;
 
-wire [1:0] ar = status[33:32];
+wire [1:0] ar       = status[33:32];
+wire       vcrop_en = status[34];
+wire [3:0] vcopt    = status[38:35];
+reg        en216p;
+reg  [4:0] voff;
+always @(posedge CLK_VIDEO) begin
+	en216p <= ((HDMI_WIDTH == 1920) && (HDMI_HEIGHT == 1080) && !forced_scandoubler && !scale);
+	voff <= (vcopt < 6) ? {vcopt,1'b0} : ({vcopt,1'b0} - 5'd24);
+end
 
-assign VIDEO_ARX = (!ar) ? 12'd10 : (ar - 1'd1);
-assign VIDEO_ARY = (!ar) ? 12'd7 : 12'd0;
+wire vga_de;
+video_freak video_freak
+(
+	.*,
+	.VGA_DE_IN(vga_de),
+	.ARX((!ar) ? 12'd10 : (ar - 1'd1)),
+	.ARY((!ar) ? 12'd7  : 12'd0),
+	.CROP_SIZE((en216p & vcrop_en) ? 10'd216 : 10'd0),
+	.CROP_OFF(voff),
+	.SCALE(status[40:39])
+);
 
 // status bit definition:
 // 31       23       15       7
@@ -275,6 +296,11 @@ localparam CONF_STR = {
 	"OG,Width,320px,304px;",
 	"o01,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
+	"-;",
+	"d5o2,Vertical Crop,Disabled,216p(5x);",
+	"d5o36,Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
+	"o78,Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
+	"-;",
 	"O56,Stereo Mix,none,25%,50%,100%;",
 	"-;",
 	"OU,Serial Mode,None,LLAPI;",
@@ -390,7 +416,7 @@ hps_io #(.STRLEN($size(CONF_STR)>>3), .WIDE(1), .VDNUM(2)) hps_io
 	.ps2_key(ps2_key),
 
 	.status(status),				// status read (32 bits)
-	.status_menumask({status[22], 10'd0, bk_autosave | ~bk_pending, ~dbg_menu,~SYSTEM_MVS,~SYSTEM_CDx,SYSTEM_CDx}),
+	.status_menumask({status[22], 9'd0, en216p, bk_autosave | ~bk_pending, ~dbg_menu,~SYSTEM_MVS,~SYSTEM_CDx,SYSTEM_CDx}),
 
 	.RTC(rtc),
 	.sdram_sz(sdram_sz),
@@ -1922,7 +1948,7 @@ video_cleaner video_cleaner
 
 	.HSync(HSync),
 	.VSync(VSync),
-	.HBlank(HBlank[2]),
+	.HBlank(HBlank[0]),
 	.VBlank(~nBNKB),
 
 	.VGA_R(r),
@@ -1948,6 +1974,7 @@ video_mixer #(.LINE_LENGTH(320), .HALF_DEPTH(0), .GAMMA(1)) video_mixer
 
 	.mono(0),
 
+	.VGA_DE(vga_de),
 	.R(r),
 	.G(g),
 	.B(b),
