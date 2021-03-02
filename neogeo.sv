@@ -349,8 +349,12 @@ always @(posedge clk_sys) counter_p <= counter_p + 1'd1;
 reg osd_btn = 0;
 always @(posedge CLK_24M) begin
 	integer timeout = 0;
+	reg     last_rst = 0;
+
+	if (RESET) last_rst = 0;
+	if (status[0]) last_rst = 1;
 	
-	if(!RESET) begin
+	if (last_rst & ~status[0]) begin
 		osd_btn <= 0;
 		if(timeout < 24000000) begin
 			timeout <= timeout + 1;
@@ -1963,16 +1967,8 @@ video_cleaner video_cleaner
 video_mixer #(.LINE_LENGTH(320), .HALF_DEPTH(0), .GAMMA(1)) video_mixer
 (
 	.*,
-
-	.clk_vid(CLK_VIDEO),
-	.ce_pix(ce_pix),
-	.ce_pix_out(CE_PIXEL),
-
-	.scanlines(0),
 	.scandoubler(scale || forced_scandoubler),
 	.hq2x(scale==1),
-
-	.mono(0),
 
 	.VGA_DE(vga_de),
 	.R(r),
