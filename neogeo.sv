@@ -17,6 +17,7 @@
 //  with this program; if not, write to the Free Software Foundation, Inc.,
 //  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 //============================================================================
+//LLAPI: llapi.sv needs to be in rtl folder and needs to be declared in file.qip (set_global_assignment -name SYSTEMVERILOG_FILE rtl/llapi.sv)
 
 // Current status:
 // Neo CD CD check ok but crashes when loading. No more video glitches.
@@ -202,7 +203,9 @@ assign AUDIO_R = snd_right;
 assign LED_USER  = status[0] | bk_pending;
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
+//LLAPI: OSD combinaison
 assign BUTTONS   = osd_btn | llapi_osd;
+//LLAPI
 assign VGA_SCALER= 0;
 assign HDMI_FREEZE = 0;
 
@@ -253,18 +256,15 @@ video_freak video_freak
 // +   O   +  +  SYSTEM_MVS;
 // +   +   O  O  SYSTEM_CDx;
 
+//LLAPI: added bit 30
 // Status Bit Map:
 //             Upper                             Lower              
 // 0         1         2         3          4         5         6   
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXX XXX XXXXX XXXXX    XXXXXXXXXXX              XXXXXX 
+// XXXXXXXXXXXXX XXX XXXXX XXXXX X   XXXXXXXXXXX              XXXXXX 
+//LLAPI
 
-// Status Bit Map:
-// 0         1         2         3 
-// 01234567890123456789012345678901
-// 0123456789ABCDEFGHIJKLMNOPQRSTUV
-//  XXXXXXXXXXXX XXXXXXXXX  XXXX X 
 `include "build_id.v"
 localparam CONF_STR = {
 	"NEOGEO;;",
@@ -314,8 +314,11 @@ localparam CONF_STR = {
 	"P1O56,Stereo Mix,none,25%,50%,100%;",
 	"P1-;",
 	"-;",
+	//LLAPI: OSD menu item. swapped NONE with LLAPI. To detect LLAPI, status[30] = 1.
+	//LLAPI: Always double check witht the bits map allocation table to avoid conflicts	
 	"OU,Serial Mode,None,LLAPI;",
 	"-;",
+	//LLAPI
 	"RE,Reset & apply;",  // decouple manual reset from system reset 
 	"J1,A,B,C,D,Start,Select,Coin,ABC;",	// ABC is a special key to press A+B+C at once, useful for keyboards that don't allow more than 2 keypresses at once
 	"jn,A,B,X,Y,Start,Select,L,R;",	        // name mapping 
@@ -451,9 +454,10 @@ wire [31:0] sd_lba[2];
 wire  [1:0] sd_wr;
 wire  [1:0] sd_rd;
 wire  [1:0] sd_ack;
-
-wire [15:0] joystick_0;	// ----HNLS DCBAUDLR
-wire [15:0] joystick_1;
+//LLAPI: Distinguish hps_io (usb) josticks from llapi joysticks
+wire [15:0] joy_usb_0;	// ----HNLS DCBAUDLR
+wire [15:0] joy_usb_1;
+//LLAPI
 wire  [8:0] spinner_0, spinner_1;
 wire  [1:0] buttons;
 wire [10:0] ps2_key;
@@ -482,8 +486,9 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(2)) hps_io
 	.EXT_BUS(),
 
 	.forced_scandoubler(forced_scandoubler),
-
-	.joystick_0(joystick_0), .joystick_1(joystick_1),
+	//LLAPI : renamed hps_io (usb) joysticks
+	.joystick_0(joy_usb_0), .joystick_1(joy_usb_1),
+	//LLAPI
 	.spinner_0(spinner_0), .spinner_1(spinner_1),
 	.ps2_mouse(ps2_mouse),
 	.buttons(buttons),
@@ -548,17 +553,19 @@ wire llapi_select = status[30];
 
 wire llapi_latch_o, llapi_latch_o2, llapi_data_o, llapi_data_o2;
 
+//Connection to USER_OUT port
 always_comb begin
 	USER_OUT = 6'b111111;
 	if (llapi_select) begin
 		USER_OUT[0] = llapi_latch_o;
 		USER_OUT[1] = llapi_data_o;
-		USER_OUT[2] = ~(llapi_select & ~OSD_STATUS);
+		USER_OUT[2] = ~(llapi_select & ~OSD_STATUS); // Blister LED
 		USER_OUT[4] = llapi_latch_o2;
 		USER_OUT[5] = llapi_data_o2;
 	end
 end
 
+//Port 1 conf
 LLAPI llapi
 (
 	.CLK_50M(CLK_50M),
@@ -574,6 +581,7 @@ LLAPI llapi
 	.LLAPI_EN(llapi_en)
 );
 
+//Port 2 conf
 LLAPI llapi2
 (
 	.CLK_50M(CLK_50M),
@@ -617,6 +625,12 @@ wire use_llapi2 = llapi_en2 && llapi_select && ((|llapi_type2 && ~(&llapi_type2)
 // 4 = RX+   = P2 Latch
 // 5 = RX-   = P2 Data
 
+//Controller string provided by core for reference (order is important)
+//Controller specific mapping based on type. More info here : https://docs.google.com/document/d/12XpxrmKYx_jgfEPyw-O2zex1kTQZZ-NSBdLO2RQPRzM/edit
+//llapi_Buttons id are HID id - 1
+
+//Port 1 mapping
+
 //	"J1,A,B,C,D,Start,Select,Coin,ABC;"
 
 wire [15:0] joy_ll_a;
@@ -659,6 +673,8 @@ always_comb begin
 	end
 end
 
+//Port 2 mapping
+
 wire [15:0] joy_ll_b;
 always_comb begin
 	// Layout for Saturn controllers, since there is no select button
@@ -699,6 +715,8 @@ always_comb begin
 	end
 end
 
+//Assign (DOWN + FIRST BUTTON) Combinaison to bring the OSD up - P1 and P1 ports.
+//TODO : Support long press detection
 wire llapi_osd = (llapi_buttons[26] & llapi_buttons[5] & llapi_buttons[0]) || (llapi_buttons2[26] & llapi_buttons2[5] & llapi_buttons2[0]);
 
 wire [15:0] joy_a;
@@ -709,11 +727,11 @@ always_comb begin
                 joy_a = joy_ll_a;
                 joy_b = joy_ll_b;
         end else if (use_llapi ^ use_llapi2) begin
-                joy_a = use_llapi  ? joy_ll_a : joystick_0;
-                joy_b = use_llapi2 ? joy_ll_b : joystick_0;
+                joy_a = use_llapi  ? joy_ll_a : joy_usb_0;
+                joy_b = use_llapi2 ? joy_ll_b : joy_usb_0;
         end else begin
-                joy_a = joystick_0;
-                joy_b = joystick_1;
+                joy_a = joy_usb_0;
+                joy_b = joy_usb_1;
         end
 end
 
