@@ -46,7 +46,7 @@ module emu
 	input         RESET,
 
 	//Must be passed to hps_io module
-	inout  [45:0] HPS_BUS,
+	inout  [47:0] HPS_BUS,
 
 	//Base video clock. Usually equals to CLK_SYS.
 	output        CLK_VIDEO,
@@ -240,7 +240,6 @@ video_freak video_freak
 // G:	status[11:10]	Neo CD region
 // C:	status[12]		Save memory card & backup RAM
 // L:	status[12]		CD lid state (DEBUG)
-//  :	status[13]		Primary SDRAM size 32MB/64MB
 //  :	status[14]		Manual Reset
 //  :	status[20:15]  OSD options
 // 0123456789 ABCDEFGHIJKLMNO
@@ -249,10 +248,17 @@ video_freak video_freak
 // Con Arc CD CDz
 // 00  01  10 11
 // F   F   +  +  ~SYSTEM_CDx;
-// +   +   S  S  SYSTEM_CDx; 
+// +   +   S  S  SYSTEM_CDx;
 // O   O   +  +  ~SYSTEM_CDx;
-// +   O   +  +  SYSTEM_MVS; 
-// +   +   O  O  SYSTEM_CDx;   
+// +   O   +  +  SYSTEM_MVS;
+// +   +   O  O  SYSTEM_CDx;
+
+// Status Bit Map:
+//             Upper                             Lower              
+// 0         1         2         3          4         5         6   
+// 01234567890123456789012345678901 23456789012345678901234567890123
+// 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
+// XXXXXXXXXXXXX XXX XXXXX XXXXX    XXXXXXXXXXX              XXXXXX 
 
 // Status Bit Map:
 // 0         1         2         3 
@@ -295,21 +301,26 @@ localparam CONF_STR = {
 	"H2O8,[DIP] Freeplay,OFF,ON;",
 	"H2O9,[DIP] Freeze,OFF,ON;",
 	"-;",
-	"OG,Width,320px,304px;",
-	"o01,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
-	"OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-	"-;",
-	"d5o2,Vertical Crop,Disabled,216p(5x);",
-	"d5o36,Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
-	"o78,Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
-	"-;",
-	"O56,Stereo Mix,none,25%,50%,100%;",
+	"P1,Audio & Video;",
+	"P1-;",
+	"P1OG,Width,320px,304px;",
+	"P1o01,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+	"P1OIK,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
+	"P1-;",
+	"d5P1o2,Vertical Crop,Disabled,216p(5x);",
+	"d5P1o36,Crop Offset,0,2,4,8,10,12,-12,-10,-8,-6,-4,-2;",
+	"P1o78,Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
+	"P1-;",
+	"P1O56,Stereo Mix,none,25%,50%,100%;",
+	"P1-;",
 	"-;",
 	"OU,Serial Mode,None,LLAPI;",
 	"-;",
 	"RE,Reset & apply;",  // decouple manual reset from system reset 
-	"J1,A,B,C,D,Start,Select,Coin,ABC;",	// ABC is a special key to press A+B+C at once, useful for
-	"V,v",`BUILD_DATE								// keyboards that don't allow more than 2 keypresses at once
+	"J1,A,B,C,D,Start,Select,Coin,ABC;",	// ABC is a special key to press A+B+C at once, useful for keyboards that don't allow more than 2 keypresses at once
+	"jn,A,B,X,Y,Start,Select,L,R;",	        // name mapping 
+	"jp,B,A,D,C,Start,Select,L,R;",	        // positional mapping consistent with NeoGeoCD controller
+	"V,v",`BUILD_DATE						// 
 };
 
 
