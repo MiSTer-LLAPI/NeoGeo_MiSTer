@@ -47,7 +47,7 @@ module emu
 	input         RESET,
 
 	//Must be passed to hps_io module
-	inout  [47:0] HPS_BUS,
+	inout  [48:0] HPS_BUS,
 
 	//Base video clock. Usually equals to CLK_SYS.
 	output        CLK_VIDEO,
@@ -471,7 +471,7 @@ wire        ioctl_wr;
 wire [26:0] ioctl_addr;
 wire [15:0] ioctl_dout;
 wire        ioctl_download;
-wire  [7:0] ioctl_index;
+wire  [7:0] ioctl_idx;
 
 wire SYSTEM_MVS = (SYSTEM_TYPE == 2'd1);
 wire SYSTEM_CDx = SYSTEM_TYPE[1];
@@ -506,7 +506,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(2)) hps_io
 	.ioctl_addr(ioctl_addr),
 	.ioctl_dout(ioctl_dout),
 	.ioctl_download(ioctl_download),
-	.ioctl_index(ioctl_index),
+	.ioctl_index(ioctl_idx),
 	.ioctl_wait(ddram_wait | memcp_wait),
 	
 	.sd_lba(sd_lba),
@@ -522,6 +522,9 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(2)) hps_io
 	.img_readonly(img_readonly),
 	.img_size(img_size)
 );
+
+reg [7:0] ioctl_index;
+always @(posedge clk_sys) ioctl_index <= ioctl_idx;
 
 reg dbg_menu = 0;
 always @(posedge clk_sys) begin
@@ -1226,7 +1229,7 @@ sdram ram1(
 	.cpbusy(sdr1_cpbusy)
 );
 
-`ifdef DUAL_SDRAM
+`ifdef MISTER_DUAL_SDRAM
 sdram ram2(
 	.SDRAM_CLK(SDRAM2_CLK),
 	.SDRAM_A(SDRAM2_A),
