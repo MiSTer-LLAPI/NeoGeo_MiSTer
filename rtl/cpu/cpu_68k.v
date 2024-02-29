@@ -19,7 +19,9 @@
 //============================================================================
 
 module cpu_68k(
-	input CLK_24M,	//CLK_68KCLK,
+	input CLK,
+	input CLK_EN_68K_P, //CLK_68KCLK
+	input CLK_EN_68K_N,
 	input nRESET,
 	input IPL2, IPL1, IPL0,
 	input nDTACK,
@@ -31,28 +33,20 @@ module cpu_68k(
 	output M68K_RW,
 	output FC2, FC1, FC0,
 	output nBG,
-	input nBR, nBGACK
+	input nBR, nBGACK,
+	input SYSTEM_CDx
+
 );
 	
-reg  M68K_CLKEN;
-wire EN_PHI1 = M68K_CLKEN;
-wire EN_PHI2 = ~M68K_CLKEN;
+wire EN_PHI1 = CLK_EN_68K_P;
+wire EN_PHI2 = CLK_EN_68K_N;
 
-// Divide-by-2
-always @(negedge CLK_24M or negedge nRESET)
-begin
-	if (!nRESET)
-		M68K_CLKEN <= 1'b0;
-	else
-		M68K_CLKEN <= ~M68K_CLKEN;
-end
-	
 reg reset;
-always @(posedge CLK_24M)
+always @(posedge CLK)
 	if (EN_PHI2) reset <= ~nRESET;
 
 fx68k FX68K(
-		.clk(CLK_24M),
+		.clk(CLK),
 		.extReset(reset),
 		.pwrUp(reset),
 		
@@ -70,7 +64,7 @@ fx68k FX68K(
 		
 		.DTACKn(nDTACK),
 		
-		.VPAn(~IPL2 | nAS | ~&M68K_ADDR[23:4]), //VPA must be fired only in IACK cycle! (NeoGeo doesn't use FC)
+		.VPAn(SYSTEM_CDx | nAS | ~&M68K_ADDR[23:4]), //VPA must be fired only in IACK cycle! (NeoGeo doesn't use FC)
 		.BERRn(1'b1),
 		
 		.IPL0n(IPL0),
