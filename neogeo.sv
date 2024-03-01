@@ -294,6 +294,11 @@ localparam CONF_STR = {
 	"-;",
 	"o9A,Input,Joystick or Spinner,Joystick,Spinner,Mouse(Irr.Maze);",
 	"-;",
+	//LLAPI: OSD menu item. swapped NONE with LLAPI. To detect LLAPI, status[31] = 0.
+	//LLAPI: Always double check witht the bits map allocation table to avoid conflicts	
+	"OV,LLAPI on USER I/O port,ON,OFF;",
+	"-;",
+	//LLAPI
 	"H0O4,Memory Card,Plugged,Unplugged;",
 	"RL,Reload Memory Card;",
 	"D4RC,Save Memory Card;",
@@ -321,11 +326,6 @@ localparam CONF_STR = {
 	"P1O56,Stereo Mix,none,25%,50%,100%;",
 	"P1-;",
 	"-;",
-	//LLAPI: OSD menu item. swapped NONE with LLAPI. To detect LLAPI, status[31] = 0.
-	//LLAPI: Always double check witht the bits map allocation table to avoid conflicts	
-	"OV,LLAPI,On,Off;",
-	"-;",
-	//LLAPI
 	"RE,Reset & apply;",  // decouple manual reset from system reset 
 	"J1,A,B,C,D,Start,Select,Coin,ABC;",	// ABC is a special key to press A+B+C at once, useful for keyboards that don't allow more than 2 keypresses at once
 	"jn,A,B,X,Y,Start,Select,L,R;",	        // name mapping 
