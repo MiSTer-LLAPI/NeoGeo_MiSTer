@@ -261,14 +261,12 @@ video_freak video_freak
 // +   O   +  +  SYSTEM_MVS;
 // +   +   O  O  SYSTEM_CDx;
 
-//LLAPI: added bit 31 (moved from 30 since CD implemetation was conficlting with CD Speed option 3X
 // Status Bit Map:
 //             Upper                             Lower              
 // 0         1         2         3          4         5         6   
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXX XXX XXXXX XXXXX XX  XXXXXXXXXXX              XXXXXX 
-//LLAPI
+// XXXXXXXXXXXXX XXX XXXXX XXXXX X   XXXXXXXXXXX              XXXXXX 
 
 `include "build_id.v"
 localparam CONF_STR = {
@@ -292,13 +290,14 @@ localparam CONF_STR = {
 	"OM,BIOS,UniBIOS,Original;",
 	"O3,Video Mode,NTSC,PAL;",
 	"-;",
+	//LLAPI: OSD menu item
+	//LLAPI Always ON
+	"-,<< LLAPI enabled >>;",
+	"-,<< Use USER I/O port >>;",
+	"-;",
+	//END LLAPI	
 	"o9A,Input,Joystick or Spinner,Joystick,Spinner,Mouse(Irr.Maze);",
 	"-;",
-	//LLAPI: OSD menu item. swapped NONE with LLAPI. To detect LLAPI, status[31] = 0.
-	//LLAPI: Always double check witht the bits map allocation table to avoid conflicts	
-	"OV,LLAPI on USER I/O port,ON,OFF;",
-	"-;",
-	//LLAPI
 	"H0O4,Memory Card,Plugged,Unplugged;",
 	"RL,Reload Memory Card;",
 	"D4RC,Save Memory Card;",
@@ -574,7 +573,7 @@ wire llapi_en, llapi_en2;
 
 //LLAPI 'ON' status when  bit 31 is 0 (assuming ON is first item in LLAPI menu option)
 
-wire llapi_select = ~status[31];
+wire llapi_select = 1'b1;
 
 wire llapi_latch_o, llapi_latch_o2, llapi_data_o, llapi_data_o2;
 
