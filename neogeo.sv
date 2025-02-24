@@ -75,6 +75,7 @@ module emu
 	input  [11:0] HDMI_WIDTH,
 	input  [11:0] HDMI_HEIGHT,
 	output        HDMI_FREEZE,
+	output        HDMI_BLACKOUT,
 
 `ifdef MISTER_FB
 	// Use framebuffer in DDRAM
@@ -213,6 +214,7 @@ assign BUTTONS   = osd_btn | llapi_osd;
 assign VGA_SCALER= 0;
 assign VGA_DISABLE = 0;
 assign HDMI_FREEZE = 0;
+assign HDMI_BLACKOUT = 0;
 
 wire [1:0] ar       = status[33:32];
 wire       vcrop_en = status[34];
@@ -266,7 +268,7 @@ video_freak video_freak
 // 0         1         2         3          4         5         6   
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXXX XXX XXXXX XXXXX X   XXXXXXXXXXX              XXXXXX 
+// XXXXXXXXXXXXX XXX XXXXX XXXXXXX  XXXXXXXXXXXXX            XXXXXX 
 
 `include "build_id.v"
 localparam CONF_STR = {
@@ -296,6 +298,7 @@ localparam CONF_STR = {
 	"O3,Video Mode,NTSC,PAL;",
 	"-;",
 	"o9A,Input,Joystick or Spinner,Joystick,Spinner,Mouse(Irr.Maze);",
+	"oBC,Multitap,No,NEO-FTC1B,NeoTris;",
 	"-;",
 	"H0O4,Memory Card,Plugged,Unplugged;",
 	"RL,Reload Memory Card;",
@@ -468,6 +471,7 @@ wire  [1:0] sd_ack;
 
 wire [15:0] joystick_0;	// ----HNLS DCBAUDLR
 wire [15:0] joystick_1;
+
 //LLAPI: Distinguish hps_io (usb) josticks from llapi joysticks
 wire [15:0] joy_usb_0;	// ----HNLS DCBAUDLR
 wire [15:0] joy_usb_1;
@@ -1417,6 +1421,8 @@ assign sdr2_en = 0;
 assign sdram_dout  = sdr_pri_sel ? sdram1_dout : sdram2_dout;
 assign sdram_ready = sdram2_ready & sdram1_ready;
 
+wire [2:0] P1_OUT, P2_OUT;
+
 neo_d0 D0(
 	.CLK(CLK_48M),
 	.CLK_EN_24M_P(CLK_EN_24M_P),
@@ -1434,6 +1440,7 @@ neo_d0 D0(
 	.nSDROM(nSDROM), .nSDMRD(nSDMRD), .nSDMWR(nSDMWR), .nZRAMCS(nZRAMCS),
 	.SDRD0(SDRD0),	.SDRD1(SDRD1),
 	.n2610CS(n2610CS), .n2610RD(n2610RD), .n2610WR(n2610WR),
+	.P1_OUT(P1_OUT), .P2_OUT(P2_OUT),
 	.BNK(BNK)
 );
 
@@ -1795,6 +1802,16 @@ neo_g0 G0(
 	.G0(nCRDC), .G1(nPAL), .DIR(M68K_RW), .WE(nPAL_WE),
 	.CDD({8'hFF, CDD}), .PC(PAL_RAM_DATA)
 );
+
+wire [11:0] joy_0a = P1_OUT[0] ? (joystick_2[11:0] | {P1_OUT[2],5'b00000}) : (joystick_0[11:0] | {P1_OUT[2],4'b0000});
+wire [11:0] joy_1a = P1_OUT[0] ? (joystick_3[11:0] | {P1_OUT[2],5'b00000}) : (joystick_1[11:0] | {P1_OUT[2],4'b0000});
+
+wire [11:0] joy_0b = ({12{P1_OUT[0]}} & joystick_0[11:0]) | ({12{P1_OUT[1]}} & joystick_2[11:0]) | {P1_OUT[2], 9'd0};
+wire [11:0] joy_1b = ({12{P2_OUT[0]}} & joystick_1[11:0]) | ({12{P2_OUT[1]}} & joystick_3[11:0]) | {P2_OUT[2], 9'd0};
+
+wire [11:0] joy_0 = status[43] ? joy_0a : status[44] ? joy_0b : joystick_0;
+wire [11:0] joy_1 = status[43] ? joy_1a : status[44] ? joy_1b : joystick_1;
+
 
 neo_c1 C1(
 	.CLK(CLK_48M),
