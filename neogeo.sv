@@ -471,10 +471,14 @@ wire  [1:0] sd_ack;
 
 wire [15:0] joystick_0;	// ----HNLS DCBAUDLR
 wire [15:0] joystick_1;
+wire [15:0] joystick_2;	// ----HNLS DCBAUDLR
+wire [15:0] joystick_3;
 
 //LLAPI: Distinguish hps_io (usb) josticks from llapi joysticks
 wire [15:0] joy_usb_0;	// ----HNLS DCBAUDLR
 wire [15:0] joy_usb_1;
+wire [15:0] joy_usb_2;
+wire [15:0] joy_usb_3;
 //LLAPI
 wire  [8:0] spinner_0, spinner_1;
 wire  [1:0] buttons;
@@ -508,6 +512,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(2)) hps_io
 	//.joystick_0(joystick_0), .joystick_1(joystick_1),
 	//LLAPI : renamed hps_io (usb) joysticks
 	.joystick_0(joy_usb_0), .joystick_1(joy_usb_1),
+	.joystick_2(joy_usb_2), .joystick_3(joy_usb_3),
 	//LLAPI
 	.spinner_0(spinner_0), .spinner_1(spinner_1),
 	.ps2_mouse(ps2_mouse),
@@ -578,6 +583,9 @@ wire [11:0] joy_ll_a;
 wire [11:0] joy_ll_b;
 wire [15:0] joy_a;
 wire [15:0] joy_b;
+wire [15:0] joy_c;
+wire [15:0] joy_d;
+
 
 //Assign (DOWN + START + FIRST BUTTON) Combinaison to bring the OSD up - P1 and P2 ports.
 wire llapi_osd = (llapi_buttons[26] & llapi_buttons[5] & llapi_buttons[0]) || (llapi_buttons2[26] & llapi_buttons2[5] & llapi_buttons2[0]);
@@ -728,11 +736,18 @@ always_comb begin
         if (~use_llapi & use_llapi2) begin
                	joy_a = joy_ll_b;
                 joy_b = joy_usb_0;
-            
-        end else begin
+				joy_c = joy_usb_1;
+				joy_d = joy_usb_2;
+        end else if (use_llapi & ~use_llapi2) begin
+               	joy_a = joy_ll_a;
+                joy_b = joy_usb_0;
+				joy_c = joy_usb_1;
+				joy_d = joy_usb_2;				
+		end else begin
                 joy_a = joy_ll_a;
                 joy_b = joy_ll_b;
-     
+				joy_c = joy_usb_0;
+				joy_d = joy_usb_1;
 		end
 end
 
@@ -1803,14 +1818,16 @@ neo_g0 G0(
 	.CDD({8'hFF, CDD}), .PC(PAL_RAM_DATA)
 );
 
-wire [11:0] joy_0a = P1_OUT[0] ? (joystick_2[11:0] | {P1_OUT[2],5'b00000}) : (joystick_0[11:0] | {P1_OUT[2],4'b0000});
-wire [11:0] joy_1a = P1_OUT[0] ? (joystick_3[11:0] | {P1_OUT[2],5'b00000}) : (joystick_1[11:0] | {P1_OUT[2],4'b0000});
+//LLAPI 
+wire [11:0] joy_0a = P1_OUT[0] ? (joy_c[11:0] | {P1_OUT[2],5'b00000}) : (joy_a[11:0] | {P1_OUT[2],4'b0000});
+wire [11:0] joy_1a = P1_OUT[0] ? (joy_d[11:0] | {P1_OUT[2],5'b00000}) : (joy_b[11:0] | {P1_OUT[2],4'b0000});
 
-wire [11:0] joy_0b = ({12{P1_OUT[0]}} & joystick_0[11:0]) | ({12{P1_OUT[1]}} & joystick_2[11:0]) | {P1_OUT[2], 9'd0};
-wire [11:0] joy_1b = ({12{P2_OUT[0]}} & joystick_1[11:0]) | ({12{P2_OUT[1]}} & joystick_3[11:0]) | {P2_OUT[2], 9'd0};
+wire [11:0] joy_0b = ({12{P1_OUT[0]}} & joy_a[11:0]) | ({12{P1_OUT[1]}} & joy_c[11:0]) | {P1_OUT[2], 9'd0};
+wire [11:0] joy_1b = ({12{P2_OUT[0]}} & joy_b[11:0]) | ({12{P2_OUT[1]}} & joy_d[11:0]) | {P2_OUT[2], 9'd0};
 
-wire [11:0] joy_0 = status[43] ? joy_0a : status[44] ? joy_0b : joystick_0;
-wire [11:0] joy_1 = status[43] ? joy_1a : status[44] ? joy_1b : joystick_1;
+wire [11:0] joy_0 = status[43] ? joy_0a : status[44] ? joy_0b : joy_a;
+wire [11:0] joy_1 = status[43] ? joy_1a : status[44] ? joy_1b : joy_b;
+//ENDLLAPI
 
 
 neo_c1 C1(
@@ -1827,10 +1844,8 @@ neo_c1 C1(
 	.nLSPOE(nLSPOE), .nLSPWE(nLSPWE),
 	.nCRDO(nCRDO), .nCRDW(nCRDW), .nCRDC(nCRDC),
 	.nSDW(nSDW),
-	//LLAPI
-	.P1_IN(~{(joy_a[9:8]|ps2_mouse[2]), {use_mouse ? ms_pos : use_sp ? {|{joy_a[7:4],ps2_mouse[1:0]},sp0} : {joy_a[7:4]|{3{joy_a[11]}}, joy_a[0], joy_a[1], joy_a[2], joy_a[3]}}}),
-	.P2_IN(~{ joy_b[9:8],               {use_mouse ? ms_btn : use_sp ? {|{joy_b[7:4]},               sp1} : {joy_b[7:4]|{3{joy_b[11]}}, joy_b[0], joy_b[1], joy_b[2], joy_b[3]}}}),
-	//END
+	.P1_IN(~{(joy_0[9:8]|ps2_mouse[2]), {use_mouse ? ms_pos : use_sp ? {|{joy_0[7:4],ps2_mouse[1:0]},sp0} : {joy_0[7:4]|{3{~xram & joy_0[11]}}, joy_0[0], joy_0[1], joy_0[2], joy_0[3]}}}),
+	.P2_IN(~{ joy_1[9:8],               {use_mouse ? ms_btn : use_sp ? {|{joy_1[7:4]},               sp1} : {joy_1[7:4]|{3{~xram & joy_1[11]}}, joy_1[0], joy_1[1], joy_1[2], joy_1[3]}}}),
 	.nCD1(nCD1), .nCD2(nCD2),
 	.nWP(0),			// Memory card is never write-protected
 	.nROMWAIT(~rom_wait), .nPWAIT0(~p_wait[0]), .nPWAIT1(~p_wait[1]), .PDTACK(1),
