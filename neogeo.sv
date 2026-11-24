@@ -434,18 +434,22 @@ neogeo_user_port user_port(
     .llapi_active(llapi_active), .snac_active(snac_active), .pad1(native_pad1), .pad2(native_pad2)
 );
 
-always_comb begin
-    {joystick_0,joystick_1,joystick_2,joystick_3}={usb0,usb1,usb2,usb3};
+// Register the complete input report before it feeds the 68k input ports.
+// This splits USER I/O selection from the path through the CPU data bus to SDRAM.
+wire [63:0] usb_players = {usb0, usb1, usb2, usb3};
+always_ff @(posedge clk_sys) begin
     if (snac_active) begin
-        joystick_0 = usb0 | {4'b0,native_pad1};
-        joystick_1 = usb1 | {4'b0,native_pad2};
+        {joystick_0, joystick_1, joystick_2, joystick_3} <=
+            {usb0 | {4'b0, native_pad1}, usb1 | {4'b0, native_pad2}, usb2, usb3};
     end else if (llapi_active) begin
         case (llapi_seen)
-            2'b01: {joystick_0,joystick_1,joystick_2,joystick_3}={{4'b0,llapi_pad[0]},usb0,usb1,usb2};
-            2'b10: {joystick_0,joystick_1,joystick_2,joystick_3}={{4'b0,llapi_pad[1]},usb0,usb1,usb2};
-            2'b11: {joystick_0,joystick_1,joystick_2,joystick_3}={{4'b0,llapi_pad[0]},{4'b0,llapi_pad[1]},usb0,usb1};
-            default: ;
+            2'b01: {joystick_0, joystick_1, joystick_2, joystick_3} <= {{4'b0, llapi_pad[0]}, usb0, usb1, usb2};
+            2'b10: {joystick_0, joystick_1, joystick_2, joystick_3} <= {{4'b0, llapi_pad[1]}, usb0, usb1, usb2};
+            2'b11: {joystick_0, joystick_1, joystick_2, joystick_3} <= {{4'b0, llapi_pad[0]}, {4'b0, llapi_pad[1]}, usb0, usb1};
+            default: {joystick_0, joystick_1, joystick_2, joystick_3} <= usb_players;
         endcase
+    end else begin
+        {joystick_0, joystick_1, joystick_2, joystick_3} <= usb_players;
     end
 end
 
