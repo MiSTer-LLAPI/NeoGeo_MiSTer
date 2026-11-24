@@ -118,6 +118,9 @@ video_freak video_freak
 `include "build_id.v"
 localparam CONF_STR = {
 	"NEOGEO;;",
+	"-,>> LLAPI enabled core    <<;",
+	"-,>> Connect USER I/O port <<;",
+	"-,LLAPI 1.0.0 on by default;",
 	"-;",
 	"FS1,*,Load ROM set;",
 	"S1,CUECHD,Load CD Image;",
@@ -171,9 +174,6 @@ localparam CONF_STR = {
 	"J1,A,B,C,D,Start,Select,Coin,ABC,A+B,C+D;",	// ABC is a special key to press A+B+C at once, useful for keyboards that don't allow more than 2 keypresses at once; A+B/C+D are useful for fighting games (Samurai Shodown, Garou, etc.)
 	"jn,A,B,X,Y,Start,Select,L,R,L2,R2;",	// name mapping 
 	"jp,B,A,D,C,Start,Select,L,R,L2,R2;",	// positional mapping consistent with NeoGeoCD controller
-	"-,>> LLAPI enabled core    <<;",
-	"-,>> Connect USER I/O port <<;",
-    "-,LLAPI 1.0.0 on by default;",
 	"V,v",`BUILD_DATE						// 
 };
 
