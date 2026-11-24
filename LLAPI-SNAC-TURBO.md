@@ -1,6 +1,6 @@
 # Neo Geo LLAPI + SNAC Turbo
 
-The MiSTer test build combines LLAPI 1.0.0, four selectable SNAC modes and optional cartridge CPU acceleration. It is based on MiSTer-devel NeoGeo_MiSTer revision `ffaab14`.
+This MiSTer build combines LLAPI 1.0.0, four selectable SNAC modes and optional cartridge CPU acceleration. It is based on MiSTer-devel NeoGeo_MiSTer revision `ffaab14`.
 
 ## CPU Turbo
 
@@ -26,6 +26,14 @@ The core releases the USER I/O pins before switching readers. In SNAC modes, USB
 Hold one Neo Geo action button (A, B, C or D). Keep holding it while pressing and releasing Start three times. The third release toggles autofire for that button. Hold it to fire and release it to stop. Repeat the gesture to return the button to manual fire. On a SNES pad, physical B maps to Neo Geo A.
 
 Each player programs their own buttons. The pulse lasts two video frames followed by two frames off (about 15 shots per second at 60 Hz). Opening the MiSTer menu preserves the settings. Resetting the game or changing USER I/O clears them. A normal Start press goes straight to the game. Holding one action before pressing Start reserves that press for programming. The LLAPI adapter handles its own turbo gesture. [Bliss-Box controller manual](https://bliss-box.com/pages/manual_4pgp)
+
+## Current Update All build
+
+In **SNAC+LLAPI Enhanced → Console**, select `NeoGeo_Turbo_20261124.rbf`. On the first menu page, **CPU Turbo** sits between **Video Mode** and **USER I/O**. [Update All publication](https://github.com/MiSTer-LLAPI/LLAPI_folder_MiSTer/actions/runs/45491957932)
+
+Quartus Prime Lite 17.0.2 Build 602 passed every timing check. The minimum setup margin is +0.431 ns on HDMI and the minimum hold margin is +0.246 ns. The 96 MHz core clock has +0.486 ns of setup margin. The controller selection is registered on the 48 MHz clock. The build tests covered input selection and the SNAC Start gesture. [Source revision](https://github.com/MiSTer-LLAPI/NeoGeo_MiSTer/tree/1b7f982f287e4e81174219f5db31e65962f32715) · [Build and reports](https://github.com/MiSTer-LLAPI/NeoGeo_MiSTer/actions/runs/45488778503)
+
+The distributed file has SHA-256 `0fd8dfdc752c8e50ec9f5978bafb404782ba4f767dfd4d983eb13b598dcfbdcf`.
 
 ## Hardware-tested build before SNAC autofire
 
