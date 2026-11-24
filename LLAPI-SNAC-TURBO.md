@@ -13,7 +13,7 @@ Cartridge games in AES and MVS modes start at the original 12 MHz. Set **CPU Tur
 
 | Menu option | Supported controller setup |
 | --- | --- |
-| LLAPI (default) | BlisSTer or GamerPRO, up to 2 players, with Immediate Repoll |
+| LLAPI 2P (default) | BlisSTer or GamerPRO, up to 2 players, with Immediate Repoll |
 | SNAC DB9 (MD) | Mega Drive 3-button or 6-button controller, 1 player, with MiSTer Genesis SNAC wiring |
 | SNAC DB15 | Neo Geo through a Villena-compatible serial splitter, up to 2 players |
 | SNAC SNES | Up to 2 players with a dual-port SNES SNAC adapter |
@@ -21,9 +21,15 @@ Cartridge games in AES and MVS modes start at the original 12 MHz. Set **CPU Tur
 
 The core releases the USER I/O pins before switching readers. In SNAC modes, USB inputs remain available.
 
-## Tested build
+### SNAC autofire
+
+Hold one Neo Geo action button (A, B, C or D). Keep holding it while pressing and releasing Start three times. The third release toggles autofire for that button. Hold it to fire and release it to stop. Repeat the gesture to return the button to manual fire. On a SNES pad, physical B maps to Neo Geo A.
+
+Each player programs their own buttons. The pulse lasts two video frames followed by two frames off (about 15 shots per second at 60 Hz). Opening the MiSTer menu preserves the settings. Resetting the game or changing USER I/O clears them. A normal Start press goes straight to the game. Holding one action before pressing Start reserves that press for programming. The LLAPI adapter handles its own turbo gesture. [Bliss-Box controller manual](https://bliss-box.com/pages/manual_4pgp)
+
+## Hardware-tested build before SNAC autofire
 
 - Local filename `NeoGeo_Turbo_20261124.rbf`. [Exact source revision](https://github.com/MiSTer-LLAPI/NeoGeo_MiSTer/tree/74a29693a90114bb0615c22c81ea31251de1565d)
 - Quartus Prime Lite 17.0.2 Build 602 passed timing with +0.052 ns minimum setup and +0.246 ns minimum hold margin. [Build and reports](https://github.com/MiSTer-LLAPI/NeoGeo_MiSTer/actions/runs/45465605022)
-- Simulations covered VRAM accesses, SDRAM priority and refresh, the four SNAC readers, and exclusive USER I/O selection. Initial feedback on MiSTer hardware was positive. Individual game and adapter combinations still need confirmation.
+- Simulations covered VRAM accesses, SDRAM priority and refresh, the four SNAC readers, and exclusive USER I/O selection. Ricardo reported that Shock Troopers and Metal Slug run well on MiSTer at 24 MHz.
 - To compare slowdown and graphics, play the same scene in the original Metal Slug 2 (`mslug2`) at 12 MHz and 24 MHz. Check sprites and text as well as responsiveness.

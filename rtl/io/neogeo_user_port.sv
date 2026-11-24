@@ -1,7 +1,7 @@
 // The mode is written by hps_io on clk. A quiet interval releases all pins
 // while the old reader stops and the two LLAPI clock domains drain reports.
 module neogeo_user_port (
-    input clk, reset, osd,
+    input clk, reset, game_reset, vblank, osd,
     input [2:0] requested,
     input [6:0] user_in, llapi_out,
     output reg [6:0] user_out,
@@ -42,6 +42,14 @@ module neogeo_user_port (
         else if (db15_drive) user_out = db15_out;
         else if (snac_active) user_out = serial_out;
     end
-    assign pad1 = !snac_active ? 12'd0 : db15_drive ? db15_pad1 : serial_pad1;
-    assign pad2 = !snac_active ? 12'd0 : db15_drive ? db15_pad2 : serial_pad2;
+    // Keep the programmed buttons when the OSD temporarily releases USER I/O.
+    wire clear_autofire = reset || game_reset || requested != selected;
+    neogeo_snac_autofire autofire_p1 (
+        .clk(clk), .reset(clear_autofire), .active(snac_active), .vblank(vblank),
+        .pad_in(db15_drive ? db15_pad1 : serial_pad1), .pad_out(pad1)
+    );
+    neogeo_snac_autofire autofire_p2 (
+        .clk(clk), .reset(clear_autofire), .active(snac_active), .vblank(vblank),
+        .pad_in(db15_drive ? db15_pad2 : serial_pad2), .pad_out(pad2)
+    );
 endmodule

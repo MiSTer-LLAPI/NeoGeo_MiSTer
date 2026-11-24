@@ -135,8 +135,10 @@ localparam CONF_STR = {
 	"O1,System Type,Console(AES),Arcade(MVS);",
 	"OM,BIOS,UniBIOS,Original;",
 	"O3,Video Mode,NTSC,PAL;",
+	"H0-;",
+	"H0oD,CPU Turbo,Off,On (24 MHz);",
 	"-;",
-	"oEG,USER I/O,LLAPI,SNAC DB9 (MD),SNAC DB15,SNAC SNES,SNAC Saturn;",
+	"oEG,USER I/O,LLAPI 2P,SNAC DB9 (MD),SNAC DB15,SNAC SNES,SNAC Saturn;",
 	"o9A,Input,Joystick or Spinner,Joystick,Spinner,Mouse(Irr.Maze);",
 	"oBC,Multitap,No,NEO-FTC1B,NeoTris;",
 	"-;",
@@ -167,7 +169,6 @@ localparam CONF_STR = {
 	"P1O56,Stereo Mix,none,25%,50%,100%;",
 	"P1-;",
 	"-;",
-	"H0oD,CPU Turbo,Off,On (24 MHz);",
 	"RE,Reset & apply;",  // decouple manual reset from system reset 
 	"-;",
 	"-,>> LLAPI enabled core    <<;",
@@ -426,7 +427,8 @@ endgenerate
 assign llapi_osd = llapi_active && (|osd_chord);
 
 neogeo_user_port user_port(
-    .clk(clk_sys), .reset(RESET), .osd(OSD_STATUS), .requested(status[48:46]),
+    .clk(clk_sys), .reset(RESET), .game_reset(!nRESET_CORE), .vblank(vblank),
+    .osd(OSD_STATUS), .requested(status[48:46]),
     .user_in(USER_IN), .user_out(USER_OUT), .db15_drive(USER_DB15_DRIVE),
     .llapi_out({1'b1,llapi_data[1],llapi_latch[1],2'b10,llapi_data[0],llapi_latch[0]}),
     .llapi_active(llapi_active), .snac_active(snac_active), .pad1(native_pad1), .pad2(native_pad2)

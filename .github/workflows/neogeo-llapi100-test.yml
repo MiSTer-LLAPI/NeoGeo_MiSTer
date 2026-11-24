@@ -21,7 +21,9 @@ jobs:
           vvp /tmp/db15
           iverilog -g2012 -s neogeo_snac_pads_tb -o /tmp/pads rtl/io/neogeo_snac_pads.sv tests/neogeo_snac_pads_tb.sv
           vvp /tmp/pads
-          iverilog -g2012 -s user_port_tb -o /tmp/user rtl/io/neogeo_user_port.sv rtl/io/neogeo_snac*.sv tests/user_port_tb.sv
+          iverilog -g2012 -s snac_autofire_tb -o /tmp/autofire rtl/neogeo_snac_autofire.sv tests/snac_autofire_tb.sv
+          vvp /tmp/autofire
+          iverilog -g2012 -s user_port_tb -o /tmp/user rtl/neogeo_snac_autofire.sv rtl/io/neogeo_user_port.sv rtl/io/neogeo_snac*.sv tests/user_port_tb.sv
           vvp /tmp/user
       - name: Compile NeoGeo with Quartus 17.0.2
         run: |

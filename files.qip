@@ -13,3 +13,4 @@ set_global_assignment -name VERILOG_FILE rtl/cpu/cpu_68k.v
 set_global_assignment -name SYSTEMVERILOG_FILE neogeo.sv
 set_global_assignment -name SDC_FILE NeoGeo.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/llapi_enhanced.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/neogeo_snac_autofire.sv

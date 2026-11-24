@@ -1,6 +1,6 @@
 `timescale 1ns/1ps
 module user_port_tb;
-    reg clk = 0, reset = 1, osd = 0;
+    reg clk = 0, reset = 1, game_reset = 0, vblank = 0, osd = 0;
     always #5 clk = !clk;
     reg [2:0] requested = 0;
     wire [6:0] user_in = 7'h7f, llapi_out = 7'h29;
@@ -28,6 +28,50 @@ module user_port_tb;
             if (target>4) released;
         end
     endtask
+    reg [11:0] reader1 = 0, reader2 = 0;
+    task frames(input integer count);
+        repeat (count) begin
+            @(negedge clk); vblank = 1;
+            repeat (3) @(negedge clk);
+            vblank = 0;
+            repeat (3) @(negedge clk);
+        end
+    endtask
+    // The pin-level tests cover the readers. Drive their complete reports here
+    // to verify the gesture through the real mode multiplexer and output ports.
+    task test_autofire_route(input [2:0] target);
+        reg saw_gap;
+        begin
+            select_mode(target);
+            if (target == 2) begin
+                force dut.db15_pad1 = reader1;
+                force dut.db15_pad2 = reader2;
+            end else begin
+                force dut.serial_pad1 = reader1;
+                force dut.serial_pad2 = reader2;
+            end
+            reader1 = 12'h010; reader2 = target==2 || target==3 ? 12'h020 : 0;
+            frames(4);
+            if (pad1 !== reader1 || pad2 !== reader2) $fatal(1,"Wrong raw pad in mode %d",target);
+            repeat (3) begin
+                reader1[8] = 1; frames(4);
+                if (pad1[8]) $fatal(1,"Start leaked in mode %d",target);
+                reader1[8] = 0; frames(4);
+            end
+            saw_gap = 0;
+            repeat (4) begin
+                frames(1);
+                if (!pad1[4]) saw_gap = 1;
+                if (pad2 !== reader2) $fatal(1,"P2 affected in mode %d",target);
+            end
+            if (!saw_gap) $fatal(1,"Autofire not routed in mode %d",target);
+            reader1 = 0; #1;
+            if (pad1 !== 0) $fatal(1,"Fire stuck in mode %d",target);
+            release dut.db15_pad1; release dut.db15_pad2;
+            release dut.serial_pad1; release dut.serial_pad2;
+            reader2 = 0;
+        end
+    endtask
     initial begin
         repeat (2) @(negedge clk);
         reset = 0;
@@ -48,6 +92,11 @@ module user_port_tb;
         released;
         repeat (3) @(negedge clk);
         reset = 0;
+        select_mode(0);
+        test_autofire_route(1);
+        test_autofire_route(2);
+        test_autofire_route(3);
+        test_autofire_route(4);
         select_mode(0);
         $display("PASS exclusive USER I/O grants, LLAPI default, reset, OSD and released transitions");
         $finish;
