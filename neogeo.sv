@@ -42,7 +42,7 @@ module emu
 );
 
 assign ADC_BUS  = 'Z;
-assign USER_OUT = '1;
+wire llapi_osd;
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign {SD_SCK, SD_MOSI, SD_CS} = 'Z;
 
@@ -54,7 +54,7 @@ assign AUDIO_R = snd_mix_r[16:1];
 assign LED_USER  = status[0] | bk_pending;
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
-assign BUTTONS   = osd_btn;
+assign BUTTONS   = osd_btn | llapi_osd;
 assign VGA_SCALER= 0;
 assign VGA_DISABLE = 0;
 assign HDMI_FREEZE = 0;
@@ -171,6 +171,9 @@ localparam CONF_STR = {
 	"J1,A,B,C,D,Start,Select,Coin,ABC,A+B,C+D;",	// ABC is a special key to press A+B+C at once, useful for keyboards that don't allow more than 2 keypresses at once; A+B/C+D are useful for fighting games (Samurai Shodown, Garou, etc.)
 	"jn,A,B,X,Y,Start,Select,L,R,L2,R2;",	// name mapping 
 	"jp,B,A,D,C,Start,Select,L,R,L2,R2;",	// positional mapping consistent with NeoGeoCD controller
+	"-,>> LLAPI enabled core    <<;",
+	"-,>> Connect USER I/O port <<;",
+    "-,LLAPI 1.0.0 on by default;",
 	"V,v",`BUILD_DATE						// 
 };
 
@@ -310,10 +313,10 @@ wire  [1:0] sd_wr;
 wire  [1:0] sd_rd;
 wire  [1:0] sd_ack;
 
-wire [15:0] joystick_0;	// 21--HNLS DCBAUDLR  (1=A+B, 2=C+D combos)
-wire [15:0] joystick_1;
-wire [15:0] joystick_2;
-wire [15:0] joystick_3;
+logic [15:0] joystick_0;	// 21--HNLS DCBAUDLR  (1=A+B, 2=C+D combos)
+logic [15:0] joystick_1;
+logic [15:0] joystick_2;
+logic [15:0] joystick_3;
 wire  [8:0] spinner_0, spinner_1;
 wire  [1:0] buttons;
 wire [10:0] ps2_key;
@@ -336,6 +339,94 @@ wire SYSTEM_CDZ = SYSTEM_CDx & SYSTEM_CD_TYPE;
 wire [15:0] sdram_sz;
 wire [21:0] gamma_bus;
 
+wire [15:0] usb0, usb1, usb2, usb3;
+wire llapi_active = !OSD_STATUS;
+reg enable_meta = 0, llapi_enable_50 = 0;
+always @(posedge CLK_50M) begin
+    enable_meta <= llapi_active;
+    llapi_enable_50 <= enable_meta;
+end
+
+wire [1:0] llapi_latch, llapi_data, llapi_valid, osd_chord;
+wire [31:0] llapi_buttons [0:1];
+wire [7:0] llapi_type [0:1];
+reg [1:0] llapi_seen = 2'b00;
+reg [11:0] llapi_pad [0:1];
+
+function automatic [11:0] map_llapi(input [31:0] b, input [7:0] controller);
+    case (controller)
+        3,8: map_llapi={b[9],b[8],b[8],b[5],b[6],b[7],b[1],b[0],b[27:24]};
+        20,21,54,11: map_llapi={b[2],b[4],b[4],b[5],b[6],b[7],b[1],b[0],b[27:24]};
+        49,56,57: map_llapi={b[6],b[4],b[4],b[5],b[3],b[2],b[1],b[0],b[27:24]};
+        9: map_llapi={b[7],b[4],b[4],b[5],b[3],b[2],b[0],b[1],b[27:24]};
+        default: map_llapi={b[7],b[4],b[4],b[5],b[3],b[2],b[1],b[0],b[27:24]};
+    endcase
+endfunction
+
+genvar player;
+generate
+for (player=0;player<2;player=player+1) begin : controller_llapi
+    localparam PIN=player*4;
+    LLAPI_Enhanced #(.IMMEDIATE_REPOLL(1),.EXTENDED_POLL_ACK(player==0)) driver (
+        .CLK_50M(CLK_50M),.ENABLE(llapi_enable_50),.LLAPI_SYNC(vblank),
+        .IO_LATCH_IN(USER_IN[PIN]),.IO_DATA_IN(USER_IN[PIN+1]),
+        .IO_LATCH_OUT(llapi_latch[player]),.IO_DATA_OUT(llapi_data[player]),
+        .LLAPI_BUTTONS(llapi_buttons[player]),.LLAPI_TYPE(llapi_type[player]),
+        .STATUS_VALID(llapi_valid[player]),
+        .CMD_VALID(1'b0),.CMD_OPCODE(8'b0),.CMD_PAYLOAD(16'b0),
+        .CMD_RAW(1'b0),.CMD_TX_LENGTH(5'b0),.CMD_RX_LENGTH(4'b0),.CMD_TX_DATA(192'b0)
+    );
+    // Hold the complete report until clk_sys acknowledges it. A button
+    // combination and its controller type must come from the same report.
+    wire chord = llapi_buttons[player][26] && llapi_buttons[player][5] && llapi_buttons[player][0];
+    wire llapi_ready = llapi_valid[player] && llapi_type[player] != 0 && llapi_type[player] != 8'hff;
+    reg held_chord = 0;
+    wire [13:0] report = llapi_ready
+        ? {1'b1, chord, map_llapi(llapi_buttons[player], llapi_type[player])} : 14'b0;
+    reg [13:0] held_report = 0;
+    reg request = 0, request_meta = 0, request_sync = 0;
+    reg ack = 0, ack_meta = 0, ack_sync = 0;
+
+    always @(posedge CLK_50M) begin
+        ack_meta <= ack;
+        ack_sync <= ack_meta;
+        if (request == ack_sync && report != held_report) begin
+            held_report <= report;
+            request <= !request;
+        end
+    end
+
+    always @(posedge clk_sys) begin
+        request_meta <= request;
+        request_sync <= request_meta;
+        if (request_sync != ack) begin
+            {llapi_seen[player], held_chord, llapi_pad[player]} <= held_report;
+            ack <= request_sync;
+        end
+    end
+
+    assign osd_chord[player] = llapi_seen[player] && held_chord;
+end
+endgenerate
+
+assign llapi_osd = llapi_active && (|osd_chord);
+
+assign USER_OUT = llapi_active
+    ? {1'b1,llapi_data[1],llapi_latch[1],2'b10,llapi_data[0],llapi_latch[0]}
+    : 7'h7f;
+
+always_comb begin
+    {joystick_0,joystick_1,joystick_2,joystick_3}={usb0,usb1,usb2,usb3};
+    if (llapi_active) begin
+        case (llapi_seen)
+            2'b01: {joystick_0,joystick_1,joystick_2,joystick_3}={{4'b0,llapi_pad[0]},usb0,usb1,usb2};
+            2'b10: {joystick_0,joystick_1,joystick_2,joystick_3}={{4'b0,llapi_pad[1]},usb0,usb1,usb2};
+            2'b11: {joystick_0,joystick_1,joystick_2,joystick_3}={{4'b0,llapi_pad[0]},{4'b0,llapi_pad[1]},usb0,usb1};
+            default: ;
+        endcase
+    end
+end
+
 hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(2)) hps_io
 (
 	.clk_sys(clk_sys),
@@ -343,8 +434,8 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(2)) hps_io
 
 	.forced_scandoubler(forced_scandoubler),
 
-	.joystick_0(joystick_0), .joystick_1(joystick_1),
-	.joystick_2(joystick_2), .joystick_3(joystick_3),
+	.joystick_0(usb0), .joystick_1(usb1),
+	.joystick_2(usb2), .joystick_3(usb3),
 	.spinner_0(spinner_0), .spinner_1(spinner_1),
 	.ps2_mouse(ps2_mouse),
 	.buttons(buttons),
