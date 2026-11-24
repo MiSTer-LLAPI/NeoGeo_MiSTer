@@ -1,4 +1,4 @@
-name: NeoGeo LLAPI CPU Turbo test
+name: NeoGeo LLAPI and SNAC CPU Turbo test
 on:
   push:
     branches: [test-neogeo-llapi-cpu-turbo]
@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Verify video port and memory contention
+      - name: Verify video, memory and USER I/O
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y iverilog
@@ -17,6 +17,12 @@ jobs:
           vvp /tmp/lspc
           iverilog -g2012 -s sdram_turbo_tb -o /tmp/sdram rtl/mem/sdram_mux.sv tests/sdram_turbo_tb.sv
           vvp /tmp/sdram
+          iverilog -g2012 -s db15_test -o /tmp/db15 rtl/io/neogeo_snac_db15.sv tests/db15_test.sv
+          vvp /tmp/db15
+          iverilog -g2012 -s neogeo_snac_pads_tb -o /tmp/pads rtl/io/neogeo_snac_pads.sv tests/neogeo_snac_pads_tb.sv
+          vvp /tmp/pads
+          iverilog -g2012 -s user_port_tb -o /tmp/user rtl/io/neogeo_user_port.sv rtl/io/neogeo_snac*.sv tests/user_port_tb.sv
+          vvp /tmp/user
       - name: Compile NeoGeo with Quartus 17.0.2
         run: |
           docker run --rm -v "$PWD:/src" -w /src --entrypoint bash raetro/quartus:17.0 -ec '
@@ -39,7 +45,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: NeoGeo-LLAPI-1.0.0-CPU-Turbo
+          name: NeoGeo-LLAPI-1.0.0-SNAC-CPU-Turbo
           path: |
             output_files/*.rbf
             output_files/*.rpt

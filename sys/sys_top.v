@@ -1658,8 +1658,10 @@ audio_out audio_out
 
 ////////////////  User I/O (USB 3.0 connector) /////////////////////////
 
-assign USER_IO[0] =                       !user_out[0]  ? 1'b0 : 1'bZ;
-assign USER_IO[1] =                       !user_out[1]  ? 1'b0 : 1'bZ;
+wire db15_drive;
+// The DB15 serial splitter uses push-pull LOAD and CLK; all other modes use open drain.
+assign USER_IO[0] = db15_drive ? user_out[0] : !user_out[0]  ? 1'b0 : 1'bZ;
+assign USER_IO[1] = db15_drive ? user_out[1] : !user_out[1]  ? 1'b0 : 1'bZ;
 assign USER_IO[2] = !(SW[1] ? HDMI_I2S   : user_out[2]) ? 1'b0 : 1'bZ;
 assign USER_IO[3] =                       !user_out[3]  ? 1'b0 : 1'bZ;
 assign USER_IO[4] = !(SW[1] ? HDMI_SCLK  : user_out[4]) ? 1'b0 : 1'bZ;
@@ -1872,6 +1874,7 @@ emu emu
 	.UART_DSR(uart_dtr),
 
 	.USER_OUT(user_out),
+	.USER_DB15_DRIVE(db15_drive),
 	.USER_IN(user_in)
 );
 

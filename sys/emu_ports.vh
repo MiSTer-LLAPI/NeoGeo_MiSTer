@@ -149,5 +149,6 @@ input         UART_DSR,
 // Set USER_OUT to 1 to read from USER_IN.
 input   [6:0] USER_IN,
 output  [6:0] USER_OUT,
+output        USER_DB15_DRIVE,
 
 input         OSD_STATUS

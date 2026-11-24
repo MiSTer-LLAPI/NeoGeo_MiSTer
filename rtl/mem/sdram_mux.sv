@@ -61,7 +61,7 @@ module sdram_mux(
 	output reg [15:0] SDRAM_DIN,
 	input             SDRAM_READY,
 	output reg  [1:0] SDRAM_BS,
-	output reg        SDRAM_RFSH,
+	output reg        SDRAM_RFSH = 1'b0,
 
 	input             DL_EN,
 	input      [15:0] DL_DATA,
@@ -113,6 +113,10 @@ module sdram_mux(
 	wire REQ_CROM_RD = (SDRAM_CROM_SIG_SR & ~PCK1) & SPR_EN & ~CD_USE_SPR & ~REFRESH_EN;
 	wire REQ_SROM_RD = (SDRAM_SROM_SIG_SR & ~PCK2) & FIX_EN & ~CD_USE_FIX & ~REFRESH_EN;
 	wire REQ_RFSH    = (SDRAM_CROM_SIG_SR & ~PCK1) & REFRESH_EN;
+	reg RFSH_REQ, turbo_refresh_owed;
+	reg [8:0] refresh_cnt = 0;
+	wire refresh_slot = REQ_RFSH && RFSH_REQ;
+	wire turbo_refresh = turbo_mem && (refresh_slot || turbo_refresh_owed);
 
 	wire CD_LDS_ONLY_WR = CD_TR_WR_FIX;
 
@@ -136,10 +140,9 @@ module sdram_mux(
 	end
 	
 	always @(posedge CLK) begin
-		reg M68K_RD_REQ, SROM_RD_REQ, CROM_RD_REQ, CD_WR_REQ, RFSH_REQ;
+		reg M68K_RD_REQ, SROM_RD_REQ, CROM_RD_REQ, CD_WR_REQ;
 		reg nAS_PREV;
 		reg old_ready;
-		reg [8:0] refresh_cnt;
 		reg [1:0] cr_shift;
 
 		if(DL_WR & DL_EN) begin
@@ -180,8 +183,10 @@ module sdram_mux(
 			CROM_RD_RUN <= 0;
 			SFIX_RD_RUN <= 0;
 			M68K_RD_RUN <= 0;
+			PROM_DATA_READY <= 0;
 			CD_TR_RUN   <= 0;
 			RFSH_REQ    <= 0;
+			turbo_refresh_owed <= 0;
 
 			if(!refresh_cnt) SDRAM_RFSH <= ~SDRAM_RFSH;
 
@@ -215,6 +220,9 @@ module sdram_mux(
 			if (REQ_SROM_RD) SROM_RD_REQ <= 1;
 
 			if (REQ_RFSH) RFSH_REQ <= 1;
+			// The second eligible blanking edge earns one refresh. In turbo
+			// keep it pending across a busy slot, even if blanking ends.
+			if (turbo_mem && refresh_slot) turbo_refresh_owed <= 1;
 
 			if (SDRAM_READY & ~SDRAM_RD & ~SDRAM_WR) begin
 
@@ -245,7 +253,8 @@ module sdram_mux(
 				// Start requested access, if needed
 				// A cart CPU fetch can wait on DTACK. Sprite and FIX fetches have display deadlines.
 				if ((M68K_RD_REQ | REQ_M68K_RD) &&
-				    !(turbo_mem && (CROM_RD_REQ || REQ_CROM_RD || SROM_RD_REQ || REQ_SROM_RD))) begin
+				    !(turbo_mem && (CROM_RD_REQ || REQ_CROM_RD || SROM_RD_REQ || REQ_SROM_RD)) &&
+				    !turbo_refresh) begin
 					M68K_RD_REQ    <= 0;
 					M68K_RD_RUN    <= 1;
 					CD_TR_RUN      <= CD_RD_SDRAM_SIG;
@@ -300,8 +309,9 @@ module sdram_mux(
 					SDRAM_DIN      <= DMA_RUNNING ? (CD_LDS_ONLY_WR ? {DMA_DATA_OUT[7:0],DMA_DATA_OUT[7:0]} : DMA_DATA_OUT) :
 															  (CD_LDS_ONLY_WR ? {M68K_DATA[7:0],   M68K_DATA[7:0]}    : M68K_DATA);
 				end
-				else if(REQ_RFSH & RFSH_REQ) begin
+				else if(refresh_slot || turbo_refresh) begin
 					RFSH_REQ       <= 0;
+					turbo_refresh_owed <= 0;
 					SDRAM_RFSH     <= ~SDRAM_RFSH;
 				end
 			end

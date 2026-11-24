@@ -136,6 +136,7 @@ localparam CONF_STR = {
 	"OM,BIOS,UniBIOS,Original;",
 	"O3,Video Mode,NTSC,PAL;",
 	"-;",
+	"oEG,USER I/O,LLAPI,SNAC DB9 (MD),SNAC DB15,SNAC SNES,SNAC Saturn;",
 	"o9A,Input,Joystick or Spinner,Joystick,Spinner,Mouse(Irr.Maze);",
 	"oBC,Multitap,No,NEO-FTC1B,NeoTris;",
 	"-;",
@@ -349,7 +350,8 @@ wire [15:0] sdram_sz;
 wire [21:0] gamma_bus;
 
 wire [15:0] usb0, usb1, usb2, usb3;
-wire llapi_active = !OSD_STATUS;
+wire llapi_active, snac_active;
+wire [11:0] native_pad1, native_pad2;
 reg enable_meta = 0, llapi_enable_50 = 0;
 always @(posedge CLK_50M) begin
     enable_meta <= llapi_active;
@@ -408,7 +410,10 @@ for (player=0;player<2;player=player+1) begin : controller_llapi
     always @(posedge clk_sys) begin
         request_meta <= request;
         request_sync <= request_meta;
-        if (request_sync != ack) begin
+        if (!llapi_active) begin
+            {llapi_seen[player], held_chord, llapi_pad[player]} <= 14'd0;
+            ack <= request_sync;
+        end else if (request_sync != ack) begin
             {llapi_seen[player], held_chord, llapi_pad[player]} <= held_report;
             ack <= request_sync;
         end
@@ -420,13 +425,19 @@ endgenerate
 
 assign llapi_osd = llapi_active && (|osd_chord);
 
-assign USER_OUT = llapi_active
-    ? {1'b1,llapi_data[1],llapi_latch[1],2'b10,llapi_data[0],llapi_latch[0]}
-    : 7'h7f;
+neogeo_user_port user_port(
+    .clk(clk_sys), .reset(RESET), .osd(OSD_STATUS), .requested(status[48:46]),
+    .user_in(USER_IN), .user_out(USER_OUT), .db15_drive(USER_DB15_DRIVE),
+    .llapi_out({1'b1,llapi_data[1],llapi_latch[1],2'b10,llapi_data[0],llapi_latch[0]}),
+    .llapi_active(llapi_active), .snac_active(snac_active), .pad1(native_pad1), .pad2(native_pad2)
+);
 
 always_comb begin
     {joystick_0,joystick_1,joystick_2,joystick_3}={usb0,usb1,usb2,usb3};
-    if (llapi_active) begin
+    if (snac_active) begin
+        joystick_0 = usb0 | {4'b0,native_pad1};
+        joystick_1 = usb1 | {4'b0,native_pad2};
+    end else if (llapi_active) begin
         case (llapi_seen)
             2'b01: {joystick_0,joystick_1,joystick_2,joystick_3}={{4'b0,llapi_pad[0]},usb0,usb1,usb2};
             2'b10: {joystick_0,joystick_1,joystick_2,joystick_3}={{4'b0,llapi_pad[1]},usb0,usb1,usb2};
