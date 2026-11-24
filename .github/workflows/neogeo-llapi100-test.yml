@@ -31,6 +31,7 @@ jobs:
             quartus_sh --version | tee quartus-version.txt
             grep -F "17.0.2 Build 602" quartus-version.txt
             quartus_sh --flow compile NeoGeo
+            quartus_sta -t .github/report-timing.tcl
             test -s output_files/NeoGeo.rbf'
       - name: Check timing margins
         run: |
