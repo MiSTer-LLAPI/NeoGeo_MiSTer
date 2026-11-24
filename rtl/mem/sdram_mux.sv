@@ -22,6 +22,7 @@
 
 module sdram_mux(
 	input             CLK,
+	input             cpu_turbo,
 
 	input             nRESET,
 	input             nSYSTEM_G,
@@ -84,6 +85,13 @@ module sdram_mux(
 	input             CD_TR_WR_FIX
 );
 
+	// The 48 MHz domain applies this mode while the core is in reset.
+	reg turbo_meta = 0, turbo_mem = 0;
+	always @(posedge CLK) begin
+		turbo_meta <= cpu_turbo;
+		turbo_mem <= turbo_meta;
+	end
+
 	localparam P2ROM_OFFSET = 27'h0300000;
 
 	reg M68K_RD_RUN, SFIX_RD_RUN, CROM_RD_RUN, CD_TR_RUN;
@@ -96,6 +104,9 @@ module sdram_mux(
 
 	wire SDRAM_M68K_SIG = ~&{nSROMOE, nROMOE, nPORTOE};
 
+	wire CD_RD_SDRAM_SIG = CD_EXT_RD | CD_TR_RD_FIX | CD_TR_RD_SPR;
+	wire CD_WR_SDRAM_SIG = CD_EXT_WR | CD_TR_WR_FIX | CD_TR_WR_SPR;
+
 	wire REQ_CD_RD   = (~CD_RD_SDRAM_SIG_SR & CD_RD_SDRAM_SIG);
 	wire REQ_CD_WR   = (~CD_WR_SDRAM_SIG_SR & CD_WR_SDRAM_SIG);
 	wire REQ_M68K_RD = (~SDRAM_M68K_SIG_SR & SDRAM_M68K_SIG) | REQ_CD_RD;
@@ -103,11 +114,9 @@ module sdram_mux(
 	wire REQ_SROM_RD = (SDRAM_SROM_SIG_SR & ~PCK2) & FIX_EN & ~CD_USE_FIX & ~REFRESH_EN;
 	wire REQ_RFSH    = (SDRAM_CROM_SIG_SR & ~PCK1) & REFRESH_EN;
 
-	wire CD_RD_SDRAM_SIG = CD_EXT_RD | CD_TR_RD_FIX | CD_TR_RD_SPR;
-	wire CD_WR_SDRAM_SIG = CD_EXT_WR | CD_TR_WR_FIX | CD_TR_WR_SPR;
 	wire CD_LDS_ONLY_WR = CD_TR_WR_FIX;
 
-	wire [24:0] CD_REMAP_TR_ADDR;
+	logic [24:0] CD_REMAP_TR_ADDR;
 	always_comb begin
 		casez({CD_EXT_RD, CD_EXT_WR, CD_TR_AREA})
 			// Read P1 (CD DMA) or Extended RAM (CD DMA+68K) $0100000~$01FFFFF
@@ -234,7 +243,9 @@ module sdram_mux(
 				end
 
 				// Start requested access, if needed
-				if (M68K_RD_REQ | REQ_M68K_RD) begin
+				// A cart CPU fetch can wait on DTACK. Sprite and FIX fetches have display deadlines.
+				if ((M68K_RD_REQ | REQ_M68K_RD) &&
+				    !(turbo_mem && (CROM_RD_REQ || REQ_CROM_RD || SROM_RD_REQ || REQ_SROM_RD))) begin
 					M68K_RD_REQ    <= 0;
 					M68K_RD_RUN    <= 1;
 					CD_TR_RUN      <= CD_RD_SDRAM_SIG;

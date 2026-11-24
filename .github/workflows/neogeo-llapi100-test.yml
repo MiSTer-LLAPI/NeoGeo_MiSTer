@@ -1,7 +1,7 @@
-name: NeoGeo LLAPI 1.0.0 test
+name: NeoGeo LLAPI CPU Turbo test
 on:
   push:
-    branches: [test-neogeo-llapi-1-0-0]
+    branches: [test-neogeo-llapi-cpu-turbo]
 permissions:
   contents: read
 jobs:
@@ -9,13 +9,21 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Verify video port and memory contention
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y iverilog
+          iverilog -g2012 -s lspc_guard_tb -o /tmp/lspc rtl/io/neogeo_lspc_guard.v tests/lspc_guard_tb.sv
+          vvp /tmp/lspc
+          iverilog -g2012 -s sdram_turbo_tb -o /tmp/sdram rtl/mem/sdram_mux.sv tests/sdram_turbo_tb.sv
+          vvp /tmp/sdram
       - name: Compile NeoGeo with Quartus 17.0.2
         run: |
           docker run --rm -v "$PWD:/src" -w /src --entrypoint bash raetro/quartus:17.0 -ec '
             quartus_sh --version | tee quartus-version.txt
             grep -F "17.0.2 Build 602" quartus-version.txt
             quartus_sh --flow compile NeoGeo
-            true'
+            test -s output_files/NeoGeo.rbf'
       - name: Check timing margins
         run: |
           awk '
@@ -31,7 +39,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: NeoGeo-LLAPI-1.0.0-Test
+          name: NeoGeo-LLAPI-1.0.0-CPU-Turbo
           path: |
             output_files/*.rbf
             output_files/*.rpt

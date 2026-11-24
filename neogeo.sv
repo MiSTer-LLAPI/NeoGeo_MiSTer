@@ -118,10 +118,6 @@ video_freak video_freak
 `include "build_id.v"
 localparam CONF_STR = {
 	"NEOGEO;;",
-	"-,>> LLAPI enabled core    <<;",
-	"-,>> Connect USER I/O port <<;",
-	"-,LLAPI 1.0.0 on by default;",
-	"-;",
 	"FS1,*,Load ROM set;",
 	"S1,CUECHD,Load CD Image;",
 	"-;",
@@ -170,7 +166,13 @@ localparam CONF_STR = {
 	"P1O56,Stereo Mix,none,25%,50%,100%;",
 	"P1-;",
 	"-;",
+	"H0oD,CPU Turbo,Off,On (24 MHz);",
 	"RE,Reset & apply;",  // decouple manual reset from system reset 
+	"-;",
+	"-,>> LLAPI enabled core    <<;",
+	"-,>> Connect USER I/O port <<;",
+	"-,LLAPI 1.0.0 on by default;",
+	"-;",
 	"J1,A,B,C,D,Start,Select,Coin,ABC,A+B,C+D;",	// ABC is a special key to press A+B+C at once, useful for keyboards that don't allow more than 2 keypresses at once; A+B/C+D are useful for fighting games (Samurai Shodown, Garou, etc.)
 	"jn,A,B,X,Y,Start,Select,L,R,L2,R2;",	// name mapping 
 	"jp,B,A,D,C,Start,Select,L,R,L2,R2;",	// positional mapping consistent with NeoGeoCD controller
@@ -335,6 +337,13 @@ wire  [7:0] ioctl_idx;
 wire SYSTEM_MVS = SYSTEM_TYPE & ~cd_en;
 wire SYSTEM_CDx = cd_en;
 wire SYSTEM_CDZ = SYSTEM_CDx & SYSTEM_CD_TYPE;
+
+// The host holds the core in reset while loading the system and cartridge.
+// Latch the selection here so opening the OSD never interrupts a CPU phase.
+reg cpu_turbo = 0;
+always @(posedge CLK_48M) begin
+	if (!nRESET_CORE) cpu_turbo <= status[45] && !SYSTEM_CDx;
+end
 
 wire [15:0] sdram_sz;
 wire [21:0] gamma_bus;
@@ -1029,6 +1038,7 @@ wire sdr2_en;
 
 sdram_mux SDRAM_MUX(
 	.CLK(CLK_96M),
+	.cpu_turbo(cpu_turbo),
 	.nRESET(nRESET),
 	.nSYSTEM_G(nSYSTEM_G),
 	.SYSTEM_CDx(SYSTEM_CDx),
@@ -1224,15 +1234,39 @@ wire nDTACK_ADJ = ~&{nSROMOE, nROMOE, nPORTOE, ~CD_EXT_RD, ~CD_TR_RD_FIX, ~CD_TR
                     : (CD_TR_RD_PCM) ? ~ADPCMA_RD_DTACK | nDTACK
                     : nDTACK;
 
+wire cpu_phi1 = cpu_turbo ? CLK_EN_24M_P : CLK_EN_68K_P;
+wire cpu_phi2 = cpu_turbo ? CLK_EN_24M_N : CLK_EN_68K_N;
+
+wire lspc_nread, lspc_nwrite, lspc_wait;
+neogeo_lspc_guard lspc_guard(
+	.clk(CLK_48M), .reset(!nRESET), .turbo(cpu_turbo),
+	.addr(M68K_ADDR[3:1]), .raw_nread(nLSPOE), .raw_nwrite(nLSPWE),
+	.nread(lspc_nread), .nwrite(lspc_nwrite), .wait_cpu(lspc_wait)
+);
+
+// The CPU can execute and access work RAM at its higher rate. Give slower
+// decoded outputs a full native-width strobe, including cart register writes.
+wire peripheral_cycle = (M68K_ADDR[23:20] == 4'h3) ||
+                        (M68K_ADDR[23:22] == 2'b01) || (M68K_ADDR[23:22] == 2'b10) ||
+                        (M68K_ADDR[23:20] == 4'h2 && (!M68K_RW || |cart_pchip || |cart_chip || xram));
+wire data_strobe = !nAS && !(nUDS && nLDS);
+reg [2:0] strobe_age = 0;
+always @(posedge CLK_48M) begin
+	if (!cpu_turbo || !data_strobe) strobe_age <= 0;
+	else if (!(&strobe_age)) strobe_age <= strobe_age + 1'b1;
+end
+// On a write, AS leads the byte strobes. Hold DTACK from address selection.
+wire peripheral_wait = cpu_turbo && peripheral_cycle && !nAS && !(&strobe_age);
+
 cpu_68k M68KCPU(
 	.CLK(CLK_48M),
-	.CLK_EN_68K_P(CLK_EN_68K_P),
-	.CLK_EN_68K_N(CLK_EN_68K_N),
+	.CLK_EN_68K_P(cpu_phi1),
+	.CLK_EN_68K_N(cpu_phi2),
 	.nRESET(nRESET),
 	.M68K_ADDR(M68K_ADDR),
 	.FX68K_DATAIN(FX68K_DATAIN), .FX68K_DATAOUT(FX68K_DATAOUT),
 	.nLDS(nLDS), .nUDS(nUDS), .nAS(nAS), .M68K_RW(M68K_RW),
-	.nDTACK(nDTACK_ADJ),	// nDTACK
+	.nDTACK(nDTACK_ADJ | lspc_wait | peripheral_wait),
 	.IPL2(1'b1), .IPL1(IPL_OUT[1]), .IPL0(IPL_OUT[0]),
 	.FC2(FC2), .FC1(FC1), .FC0(FC0),
 	.nBG(nBG), .nBR(nBR), .nBGACK(nBGACK),
@@ -1509,7 +1543,7 @@ assign M68K_DATA = (cart_chip == 2) ? COM_DOUT : 16'bzzzzzzzz_zzzzzzzz;
 syslatch SL(
 	.nRESET(nRESET),
 	.CLK(CLK_48M),
-	.CLK_EN_68K_P(CLK_EN_68K_P),
+	.CLK_EN_68K_P(cpu_phi1),
 	.M68K_ADDR(M68K_ADDR[4:1]),
 	.nBITW1(nBITW1),
 	.SHADOW(SHADOW), .nVEC(nVEC), .nCARDWEN(nCARDWEN),	.CARDWENB(CARDWENB), .nREGEN(nREGEN), .nSYSTEM(nSYSTEM), .nSRAMWEN(nSRAMWEN), .PALBNK(PALBNK)
@@ -1590,7 +1624,9 @@ neo_c1 C1(
 	.SDD_WR(SDD_OUT),
 	.SDD_RD(SDD_RD_C1),
 	.nSDZ80R(nSDZ80R), .nSDZ80W(nSDZ80W), .nSDZ80CLR(nSDZ80CLR),
-	.CLK_EN_68K_P(CLK_EN_68K_P),
+	// Keep cartridge/card wait counts in native clocks. Rearm on even a
+	// short idle interval between consecutive accelerated bus cycles.
+	.CLK_EN_68K_P(CLK_EN_68K_P | (cpu_turbo && nAS)),
 	.nDTACK(nDTACK),
 	.nBITW0(nBITW0), .nBITW1(nBITW1),
 	.nDIPRD0(nDIPRD0), .nDIPRD1(nDIPRD1),
@@ -2046,7 +2082,7 @@ lspc2_a2_sync	LSPC(
 	.IPL0(IPL0), .IPL1(IPL1),
 	.CD_VBLANK_IRQ_EN(CD_VBLANK_IRQ_EN | ~SYSTEM_CDx),
 	.CD_TIMER_IRQ_EN(CD_TIMER_IRQ_EN | ~SYSTEM_CDx),
-	.LSPOE(nLSPOE), .LSPWE(nLSPWE),
+	.LSPOE(lspc_nread), .LSPWE(lspc_nwrite),
 	.PBUS_OUT(PBUS[15:0]), .PBUS_IO(PBUS[23:16]),
 	.nPBUS_OUT_EN(nPBUS_OUT_EN),
 	.DOTA(DOTA_GATED), .DOTB(DOTB_GATED),
