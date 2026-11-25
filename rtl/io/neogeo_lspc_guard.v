@@ -20,7 +20,10 @@ module neogeo_lspc_guard(
     reg last_write_data = 0;
     reg issued = 0, sampled = 0;
     wire short_gap = last_write_data && write_data;
-    wire can_issue = !vram_access || (short_gap ? recovery <= 7'd16 : recovery == 0);
+    // The address register loads on release. The following data write can
+    // issue at the next bus cycle; only a VRAM read needs the prefetched word.
+    wire address_to_data = !last_write_data && write_data;
+    wire can_issue = !vram_access || address_to_data || (short_gap ? recovery <= 7'd16 : recovery == 0);
 
     // Stalling only DTACK would still expose the new write to the LSPC.
     // Gate both pins, passing exactly one continuous strobe per transaction.

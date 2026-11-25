@@ -1,7 +1,7 @@
-name: NeoGeo LLAPI and SNAC CPU Turbo test
+name: NeoGeo 48 MHz experimental cartridge build
 on:
   push:
-    branches: [test-neogeo-llapi-cpu-turbo]
+    branches: [experiment-neogeo-48mhz]
 permissions:
   contents: read
 jobs:
@@ -36,6 +36,27 @@ jobs:
                 --top-module autofire_hps_tb --Mdir /tmp/autofire_hps \
                 tests/autofire_hps_tb.sv rtl/neogeo_snac_autofire.sv sys/hps_io.sv
               /tmp/autofire_hps/Vautofire_hps_tb'
+      - name: Check sprite writes on the native video controller
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -w /src --entrypoint /bin/sh \
+            verilator/verilator:v5.054@sha256:da7845c38c2ab84133661a1b1e2d717d028fe0bc629cc06c77bb80571e610448 -ec '
+              verilator --binary --timing -j 2 -Wno-fatal -Wno-PINMISSING \
+                --top-module lspc_vram_pairs_tb --Mdir /tmp/lspc_vram_pairs \
+                tests/lspc_vram_pairs_tb.sv rtl/io/neogeo_lspc_guard.v \
+                rtl/io/register.v rtl/io/resetp.v rtl/cells/bd3.v rtl/video/*.v
+              /tmp/lspc_vram_pairs/Vlspc_vram_pairs_tb'
+      - name: Execute the 68000 and native bus timing regression
+        run: |
+          # The upstream ALU contains partial unique cases at reset. This
+          # bench uses explicit $fatal checks for bus, timing and data errors.
+          docker run --rm -v "$PWD:/src:ro" -w /src --entrypoint /bin/sh \
+            verilator/verilator:v5.054@sha256:da7845c38c2ab84133661a1b1e2d717d028fe0bc629cc06c77bb80571e610448 -ec '
+              verilator --binary --timing --no-assert -j 2 -Wno-fatal -Wno-PINMISSING \
+                --top-module cpu_bus48_tb --Mdir /tmp/cpu_bus48 \
+                tests/cpu_bus48_tb.sv rtl/cpu/neogeo_cpu_bus48.sv rtl/cpu/cpu_68k.v rtl/io/clocks.v \
+                rtl/cpu/FX68K/fx68k.sv rtl/cpu/FX68K/fx68kAlu.sv rtl/cpu/FX68K/uaddrPla.sv
+              cd rtl/cpu/FX68K
+              for ps in 0 5207 5208 5209 9000; do /tmp/cpu_bus48/Vcpu_bus48_tb +offset_ps=$ps; done'
       - name: Compile NeoGeo with Quartus 17.0.2
         run: |
           docker run --rm -v "$PWD:/src" -w /src --entrypoint bash raetro/quartus:17.0 -ec '
@@ -59,7 +80,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: NeoGeo-LLAPI-1.0.0-SNAC-CPU-Turbo
+          name: NeoGeo-48MHz-experimental
           path: |
             output_files/*.rbf
             output_files/*.rpt

@@ -1,13 +1,21 @@
-# Neo Geo LLAPI + SNAC Turbo
+# NeoGeo Turbo48
 
-This MiSTer build combines LLAPI 1.0.0, four selectable SNAC modes and optional cartridge CPU acceleration. It is based on MiSTer-devel NeoGeo_MiSTer revision `ffaab14`.
+The experimental NeoGeo_Turbo48 core combines LLAPI 1.0.0, four selectable SNAC modes and optional cartridge CPU acceleration. It is based on MiSTer-devel NeoGeo_MiSTer revision `ffaab14`.
 
 ## CPU Turbo
 
-Cartridge games in AES and MVS modes start at the original 12 MHz. Set **CPU Turbo** to **On (24 MHz)** and select **Reset & apply** to run the 68000 at 24 MHz. Set it back to **Off** and apply another reset to return to 12 MHz. Neo Geo CD runs at 12 MHz in either case.
+Cartridge games start at 12 MHz in AES and MVS modes. Turn **CPU Turbo** on to reveal **CPU Speed**. Select **24 MHz** (the default turbo speed) or **48 MHz Experimental**, then choose **Reset & apply**. Turn **CPU Turbo** off and apply a reset to return to 12 MHz. Neo Geo CD and CDZ use 12 MHz in every case.
+
+At the experimental setting the 68000 runs from the faster output of the existing PLL. A transaction bridge exchanges reads and writes with the original peripheral bus. Games that wait on cartridge memory, video or sound can gain less than the change in CPU rate suggests.
 
 - The video controller receives correctly spaced VRAM read and write strobes in Turbo mode. The CPU waits while the video port is recovering. The intervals follow the native 68000 timing described in the [SNK hardware manual](https://www.neogeodev.org/NG.pdf).
 - The SDRAM arbiter prioritizes pending sprite and fixed-layer reads over CPU ROM reads in Turbo mode. An owed refresh remains pending across a busy slot, and reset clears the previous ROM acknowledgement before the first new fetch.
+
+### Zed Blade
+
+On MiSTer, Ricardo reported a startup problem and a missing player ship at 24 MHz. The game updates sprite positions by selecting a VRAM address and then writing data. In Turbo48, this sequence can issue the data write on the next bus cycle. The native video-controller simulation checks the stored bytes and the next write address, including the sprite addresses used by the game. The accelerated modes keep the recovery intervals for VRAM reads and consecutive data writes.
+
+For the hardware test, use the same game, BIOS and video settings at each speed. Apply a reset, check that the game boots, start stage one, and check that the player ship appears and moves. Record startup and ship visibility separately at 12, 24 and 48 MHz Experimental.
 
 ## USER I/O
 
@@ -31,7 +39,7 @@ With SNAC, hold the chosen action and press and release **Start** three times. O
 
 Start alone goes straight to the game. Holding exactly one action before pressing Start reserves that press for the SNAC shortcut. In LLAPI mode the adapter handles its own shortcut in firmware. Its internal setting is independent of the core’s Autofire menu. [Bliss-Box controller manual](https://bliss-box.com/pages/manual_4pgp)
 
-## Current Update All build
+## Earlier NeoGeo_Turbo build (24 November)
 
 In **SNAC+LLAPI Enhanced → Console**, select `NeoGeo_Turbo_20261124.rbf`. On the first menu page, **CPU Turbo** sits between **Video Mode** and **USER I/O**. [Update All publication](https://github.com/MiSTer-LLAPI/LLAPI_folder_MiSTer/actions/runs/45491957932)
 

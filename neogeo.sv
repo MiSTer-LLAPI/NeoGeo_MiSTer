@@ -136,7 +136,8 @@ localparam CONF_STR = {
 	"OM,BIOS,UniBIOS,Original;",
 	"O3,Video Mode,NTSC,PAL;",
 	"H0-;",
-	"H0oD,CPU Turbo,Off,On (24 MHz);",
+	"H0oD,CPU Turbo,Off,On;",
+	"H8O[76],CPU Speed,24 MHz,48 MHz Experimental;",
 	"P2,Autofire;",
 	"P2O[67:66],P1 Autofire,Off,Hold,Toggle;",
 	"D6P2O[65:64],P1 Button,A,B,C,D;",
@@ -352,9 +353,12 @@ wire SYSTEM_CDZ = SYSTEM_CDx & SYSTEM_CD_TYPE;
 
 // The host holds the core in reset while loading the system and cartridge.
 // Latch the selection here so opening the OSD never interrupts a CPU phase.
-reg cpu_turbo = 0;
+reg cpu_turbo = 0, cpu_48mhz = 0;
 always @(posedge CLK_48M) begin
-	if (!nRESET_CORE) cpu_turbo <= status[45] && !SYSTEM_CDx;
+    if (!nRESET_CORE) begin
+        cpu_turbo <= status[45] && !SYSTEM_CDx;
+        cpu_48mhz <= status[45] && status[76] && !SYSTEM_CDx;
+    end
 end
 
 wire [15:0] sdram_sz;
@@ -509,7 +513,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(2)) hps_io
 
 	.status(status),
 	.status_in(autofire_status_update), .status_set(autofire_status_set),				// HPS menu status
-	.status_menumask({status[22], 7'd0, !menu_autofire[1], !menu_autofire[0], en216p, bk_autosave | ~bk_pending, ~dbg_menu,~SYSTEM_MVS,1'b0,SYSTEM_CDx}),
+	.status_menumask({status[22], 6'd0, (SYSTEM_CDx || !status[45]), !menu_autofire[1], !menu_autofire[0], en216p, bk_autosave | ~bk_pending, ~dbg_menu,~SYSTEM_MVS,1'b0,SYSTEM_CDx}),
 
 	.RTC(rtc),
 	.sdram_sz(sdram_sz),
@@ -1316,19 +1320,59 @@ end
 // On a write, AS leads the byte strobes. Hold DTACK from address selection.
 wire peripheral_wait = cpu_turbo && peripheral_cycle && !nAS && !(&strobe_age);
 
+// C0 (96 MHz) and C1 (48 MHz) are phase-aligned outputs of the
+// same PLL. Switch only during core reset and in their common low
+// half-cycle. Use the Cyclone V global clock mux instead of fabric logic.
+reg select_96 = 0;
+always @(negedge CLK_96M)
+    if (!CLK_48M && !nRESET_CORE) select_96 <= cpu_48mhz;
+wire cpu_master;
+altclkctrl #(.clock_type("Global Clock"), .intended_device_family("Cyclone V"),
+             .number_of_clocks(4)) cpu_clock_mux (
+    .inclk({CLK_48M,CLK_96M,2'b00}), .clkselect({1'b1,!select_96}),
+    .ena(1'b1), .outclk(cpu_master)
+);
+
+wire cpu_enable_p, cpu_enable_n;
+neogeo_cpu_phases cpu_phases (
+    .clk_cpu(cpu_master), .experimental(cpu_48mhz),
+    .legacy_p(cpu_phi1), .legacy_n(cpu_phi2), .phi1(cpu_enable_p), .phi2(cpu_enable_n)
+);
+wire [23:1] cpu_addr, bridge_addr;
+wire [15:0] cpu_write_data, bridge_write_data, bridge_read_data;
+wire [2:0] cpu_fc, bridge_fc;
+wire cpu_nas, cpu_nuds, cpu_nlds, cpu_rnw;
+wire bridge_nas, bridge_nuds, bridge_nlds, bridge_rnw, bridge_ndtack;
+wire board_ndtack = nDTACK_ADJ | lspc_wait | peripheral_wait;
+neogeo_cpu_bus48 cpu_bus (
+    .clk_cpu(cpu_master), .clk_sys(CLK_48M), .reset(!nRESET || !cpu_48mhz),
+    .cpu_addr(cpu_addr), .cpu_write_data(cpu_write_data), .cpu_fc(cpu_fc),
+    .cpu_nas(cpu_nas), .cpu_nuds(cpu_nuds), .cpu_nlds(cpu_nlds), .cpu_rnw(cpu_rnw),
+    .cpu_read_data(bridge_read_data), .cpu_ndtack(bridge_ndtack),
+    .bus_addr(bridge_addr), .bus_write_data(bridge_write_data), .bus_fc(bridge_fc),
+    .bus_nas(bridge_nas), .bus_nuds(bridge_nuds), .bus_nlds(bridge_nlds), .bus_rnw(bridge_rnw),
+    .bus_read_data(FX68K_DATAIN), .bus_ndtack(board_ndtack)
+);
+
+assign M68K_ADDR = cpu_48mhz ? bridge_addr : cpu_addr;
+assign FX68K_DATAOUT = cpu_48mhz ? bridge_write_data : cpu_write_data;
+assign {FC2,FC1,FC0} = cpu_48mhz ? bridge_fc : cpu_fc;
+assign {nAS,nUDS,nLDS,M68K_RW} = cpu_48mhz
+    ? {bridge_nas,bridge_nuds,bridge_nlds,bridge_rnw}
+    : {cpu_nas,cpu_nuds,cpu_nlds,cpu_rnw};
+
 cpu_68k M68KCPU(
-	.CLK(CLK_48M),
-	.CLK_EN_68K_P(cpu_phi1),
-	.CLK_EN_68K_N(cpu_phi2),
-	.nRESET(nRESET),
-	.M68K_ADDR(M68K_ADDR),
-	.FX68K_DATAIN(FX68K_DATAIN), .FX68K_DATAOUT(FX68K_DATAOUT),
-	.nLDS(nLDS), .nUDS(nUDS), .nAS(nAS), .M68K_RW(M68K_RW),
-	.nDTACK(nDTACK_ADJ | lspc_wait | peripheral_wait),
-	.IPL2(1'b1), .IPL1(IPL_OUT[1]), .IPL0(IPL_OUT[0]),
-	.FC2(FC2), .FC1(FC1), .FC0(FC0),
-	.nBG(nBG), .nBR(nBR), .nBGACK(nBGACK),
-	.SYSTEM_CDx(SYSTEM_CDx)
+    .CLK(cpu_master),
+    .CLK_EN_68K_P(cpu_enable_p), .CLK_EN_68K_N(cpu_enable_n),
+    .nRESET(nRESET), .M68K_ADDR(cpu_addr),
+    .FX68K_DATAIN(cpu_48mhz ? bridge_read_data : FX68K_DATAIN),
+    .FX68K_DATAOUT(cpu_write_data),
+    .nLDS(cpu_nlds), .nUDS(cpu_nuds), .nAS(cpu_nas), .M68K_RW(cpu_rnw),
+    .nDTACK(cpu_48mhz ? bridge_ndtack : board_ndtack),
+    .IPL2(1'b1), .IPL1(IPL_OUT[1]), .IPL0(IPL_OUT[0]),
+    .FC2(cpu_fc[2]), .FC1(cpu_fc[1]), .FC0(cpu_fc[0]),
+    .nBG(nBG), .nBR(cpu_48mhz ? 1'b1 : nBR), .nBGACK(cpu_48mhz ? 1'b1 : nBGACK),
+    .SYSTEM_CDx(SYSTEM_CDx)
 );
 
 wire IACK = &{FC2, FC1, FC0};

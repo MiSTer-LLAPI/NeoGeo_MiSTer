@@ -74,6 +74,7 @@ module autofire_hps_tb;
             $fatal(1, "Partial host echo changed the effective mode/button");
 
     initial begin
+        expected[76] = 1; // The experimental speed selection shares this OSD word.
         expected[75:64] = {2'd1, 2'd0, 2'd0, 2'd2, 2'd0, 2'd0};
         send_status(expected);
         reset = 0;
