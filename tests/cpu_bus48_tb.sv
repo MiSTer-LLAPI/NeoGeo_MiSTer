@@ -3,9 +3,9 @@
 // 48 MHz target. Every bus transaction must survive variable DTACK delays.
 module cpu_bus48_tb;
     bit clk_cpu, clk_sys;
+    integer offset_ps;
     always #5.208 clk_cpu = ~clk_cpu;
     initial begin
-        integer offset_ps;
         if (!$value$plusargs("offset_ps=%d", offset_ps)) offset_ps = 0;
         #(offset_ps * 1ps);
         forever #10.416 clk_sys = ~clk_sys;
@@ -42,9 +42,9 @@ module cpu_bus48_tb;
     assign {ba, bw, bf, bas, bus_upper, bus_lower, brw} = turbo48 ?
         {proxy_addr, proxy_wdata, proxy_fc, proxy_as, proxy_upper, proxy_lower, proxy_rw} :
         {ca, cw, cf, cas, cus, cls, crw};
-    wire core_clk = turbo48 ? clk_cpu : clk_sys;
+    wire core_clk = clk_cpu;
     wire phi1, phi2;
-    neogeo_cpu_phases phases(.clk_cpu(core_clk), .experimental(turbo48),
+    neogeo_cpu_phases phases(.clk_cpu(core_clk), .board_phase(phi24n), .experimental(turbo48),
         .legacy_p(turbo24 ? phi24p : phi12p), .legacy_n(turbo24 ? phi24n : phi12n),
         .phi1(phi1), .phi2(phi2));
     bit irq_done, saw_iack, tas_locked, saw_tas_write;
@@ -55,6 +55,29 @@ module cpu_bus48_tb;
         .nAS(cas), .nUDS(cus), .nLDS(cls), .M68K_RW(crw),
         .FC2(cf[2]), .FC1(cf[1]), .FC0(cf[0]),
         .IPL2(1'b1), .IPL1(!irq2), .IPL0(1'b1), .nBR(1'b1), .nBGACK(1'b1), .SYSTEM_CDx(cd));
+
+    // At the PLL's specified 0-degree phase, every native bus cycle must
+    // match the original, directly board-clocked CPU, including Neo Geo CD.
+    // The model starts C1's first rising edge one half fast-cycle later than
+    // C0's first, so an offset of 5208 ps aligns their rising edges.
+    wire [23:1] ref_addr;
+    wire [15:0] ref_wdata;
+    wire [2:0] ref_fc;
+    wire ref_as, ref_us, ref_ls, ref_rw;
+    cpu_68k native_reference(.CLK(clk_sys), .CLK_EN_68K_P(turbo24 ? phi24p : phi12p),
+        .CLK_EN_68K_N(turbo24 ? phi24n : phi12n), .nRESET(!reset),
+        .M68K_ADDR(ref_addr), .FX68K_DATAOUT(ref_wdata), .FX68K_DATAIN(read_data),
+        .nDTACK(ndtack), .nAS(ref_as), .nUDS(ref_us), .nLDS(ref_ls), .M68K_RW(ref_rw),
+        .FC2(ref_fc[2]), .FC1(ref_fc[1]), .FC0(ref_fc[0]), .IPL2(1'b1),
+        .IPL1(!irq2), .IPL0(1'b1), .nBR(1'b1), .nBGACK(1'b1), .SYSTEM_CDx(cd));
+    always @(negedge clk_sys) begin
+        #1ps;
+        if (offset_ps == 5208 && !reset && !turbo48) begin
+            if ({cas,cus,cls,crw,cf} !== {ref_as,ref_us,ref_ls,ref_rw,ref_fc} ||
+                (!cas && ca !== ref_addr) || (!cas && !crw && cw !== ref_wdata))
+                $fatal(1, "Native bus differs from original CPU at address %h", ca);
+        end
+    end
 
     reg [15:0] rom[0:255], ram[0:1];
     int ip = 'h80;

@@ -6,7 +6,7 @@ The experimental NeoGeo_Turbo48 core combines LLAPI 1.0.0, four selectable SNAC 
 
 Cartridge games start at 12 MHz in AES and MVS modes. Turn **CPU Turbo** on to reveal **CPU Speed**. Select **24 MHz** (the default turbo speed) or **48 MHz Experimental**, then choose **Reset & apply**. Turn **CPU Turbo** off and apply a reset to return to 12 MHz. Neo Geo CD and CDZ use 12 MHz in every case.
 
-At the experimental setting the 68000 runs from the faster output of the existing PLL. A transaction bridge exchanges reads and writes with the original peripheral bus. Games that wait on cartridge memory, video or sound can gain less than the change in CPU rate suggests.
+The 68000 uses the existing 96 MHz clock. Clock enables select its execution speed. At the experimental setting a transaction bridge exchanges reads and writes with the original peripheral bus. Games that wait on cartridge memory, video or sound can gain less than the change in CPU rate suggests.
 
 - The video controller receives correctly spaced VRAM read and write strobes in Turbo mode. The CPU waits while the video port is recovering. The intervals follow the native 68000 timing described in the [SNK hardware manual](https://www.neogeodev.org/NG.pdf).
 - The SDRAM arbiter prioritizes pending sprite and fixed-layer reads over CPU ROM reads in Turbo mode. An owed refresh remains pending across a busy slot, and reset clears the previous ROM acknowledgement before the first new fetch.
@@ -16,6 +16,12 @@ At the experimental setting the 68000 runs from the faster output of the existin
 On MiSTer, Ricardo reported a startup problem and a missing player ship at 24 MHz. The game updates sprite positions by selecting a VRAM address and then writing data. In Turbo48, this sequence can issue the data write on the next bus cycle. The native video-controller simulation checks the stored bytes and the next write address, including the sprite addresses used by the game. The accelerated modes keep the recovery intervals for VRAM reads and consecutive data writes.
 
 For the hardware test, use the same game, BIOS and video settings at each speed. Apply a reset, check that the game boots, start stage one, and check that the player ship appears and moves. Record startup and ship visibility separately at 12, 24 and 48 MHz Experimental.
+
+### Blazing Star sound
+
+On MiSTer, the same cartridge image lost both music and gunfire at 24 MHz. Both returned after resetting at 12 MHz. In simulation, the accelerated 68000 sent the startup command `$07` while the Z80 was still clearing its sound queue after command `$03`. The Z80 read `$07`, then erased it before the main loop could act on it.
+
+In cartridge turbo mode, the core watches for the Z80 reading `$03` and starting its RAM clear. If `$07` arrives during that sequence, the core holds the write until the Z80 finishes enabling interrupts, with a bounded timeout. Tests using the original sound program and the measured turbo bus intervals confirmed that the Z80 consumed `$07` and then wrote to register `$27` on the YM2610. To check audible output, start the first mission, listen for music and fire the weapon at each CPU speed after **Reset & apply**.
 
 ## USER I/O
 

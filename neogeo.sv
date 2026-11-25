@@ -1320,22 +1320,11 @@ end
 // On a write, AS leads the byte strobes. Hold DTACK from address selection.
 wire peripheral_wait = cpu_turbo && peripheral_cycle && !nAS && !(&strobe_age);
 
-// C0 (96 MHz) and C1 (48 MHz) are phase-aligned outputs of the
-// same PLL. Switch only during core reset and in their common low
-// half-cycle. Use the Cyclone V global clock mux instead of fabric logic.
-reg select_96 = 0;
-always @(negedge CLK_96M)
-    if (!CLK_48M && !nRESET_CORE) select_96 <= cpu_48mhz;
-wire cpu_master;
-altclkctrl #(.clock_type("Global Clock"), .intended_device_family("Cyclone V"),
-             .number_of_clocks(4)) cpu_clock_mux (
-    .inclk({CLK_48M,CLK_96M,2'b00}), .clkselect({1'b1,!select_96}),
-    .ena(1'b1), .outclk(cpu_master)
-);
-
+// Keep the CPU on the existing 96 MHz global clock in every mode. Its
+// phase enables select the speed without consuming a second clock driver.
 wire cpu_enable_p, cpu_enable_n;
 neogeo_cpu_phases cpu_phases (
-    .clk_cpu(cpu_master), .experimental(cpu_48mhz),
+    .clk_cpu(CLK_96M), .board_phase(CLK_EN_24M_N), .experimental(cpu_48mhz),
     .legacy_p(cpu_phi1), .legacy_n(cpu_phi2), .phi1(cpu_enable_p), .phi2(cpu_enable_n)
 );
 wire [23:1] cpu_addr, bridge_addr;
@@ -1346,7 +1335,7 @@ wire bridge_nas, bridge_nuds, bridge_nlds, bridge_rnw, bridge_ndtack;
 wire sound_wait;
 wire board_ndtack = nDTACK_ADJ | lspc_wait | peripheral_wait | sound_wait;
 neogeo_cpu_bus48 cpu_bus (
-    .clk_cpu(cpu_master), .clk_sys(CLK_48M), .reset(!nRESET || !cpu_48mhz),
+    .clk_cpu(CLK_96M), .clk_sys(CLK_48M), .reset(!nRESET || !cpu_48mhz),
     .cpu_addr(cpu_addr), .cpu_write_data(cpu_write_data), .cpu_fc(cpu_fc),
     .cpu_nas(cpu_nas), .cpu_nuds(cpu_nuds), .cpu_nlds(cpu_nlds), .cpu_rnw(cpu_rnw),
     .cpu_read_data(bridge_read_data), .cpu_ndtack(bridge_ndtack),
@@ -1363,7 +1352,7 @@ assign {nAS,nUDS,nLDS,M68K_RW} = cpu_48mhz
     : {cpu_nas,cpu_nuds,cpu_nlds,cpu_rnw};
 
 cpu_68k M68KCPU(
-    .CLK(cpu_master),
+    .CLK(CLK_96M),
     .CLK_EN_68K_P(cpu_enable_p), .CLK_EN_68K_N(cpu_enable_n),
     .nRESET(nRESET), .M68K_ADDR(cpu_addr),
     .FX68K_DATAIN(cpu_48mhz ? bridge_read_data : FX68K_DATAIN),

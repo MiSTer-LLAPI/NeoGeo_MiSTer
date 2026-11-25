@@ -100,11 +100,21 @@ module neogeo_cpu_bus48 (
 endmodule
 
 module neogeo_cpu_phases (
-    input clk_cpu, experimental, legacy_p, legacy_n,
+    input clk_cpu, board_phase, experimental, legacy_p, legacy_n,
     output phi1, phi2
 );
-    reg phase = 0;
-    always @(posedge clk_cpu) phase <= !phase;
-    assign phi1 = experimental ? phase : legacy_p;
-    assign phi2 = experimental ? !phase : legacy_n;
+    // The 96/48 MHz PLL outputs have zero relative phase. board_phase
+    // toggles on every rising board clock. Sample midway between its edges
+    // at 96 MHz so that a stable second sample marks the *next* board edge.
+    // This gives the 12/24 MHz CPU its original board-aligned enables.
+    reg phase_sample = 0, native_p = 0, native_n = 0;
+    always @(negedge clk_cpu) begin
+        phase_sample <= board_phase;
+        native_p <= (phase_sample == board_phase) && legacy_p;
+        native_n <= (phase_sample == board_phase) && legacy_n;
+    end
+    reg fast_phase = 0;
+    always @(posedge clk_cpu) fast_phase <= !fast_phase;
+    assign phi1 = experimental ? fast_phase : native_p;
+    assign phi2 = experimental ? !fast_phase : native_n;
 endmodule
