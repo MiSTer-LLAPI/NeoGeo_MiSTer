@@ -136,7 +136,9 @@ module neogeo_autofire_settings (
     always @(posedge clk) last_status_set <= status_set;
 
 
-    for (genvar p = 0; p < 2; p = p + 1) begin : player
+    genvar p;
+    generate
+    for (p = 0; p < 2; p = p + 1) begin : player
         reg local_selection = 0, awaiting = 0;
         reg [3:0] requested = 0, submitted = 0;
         assign waiting_for_echo[p] = awaiting && host[p] != submitted;
@@ -168,6 +170,8 @@ module neogeo_autofire_settings (
             end
         end
     end
+
+    endgenerate
 
     assign {mode1, button1} = effective[0];
     assign {mode2, button2} = effective[1];
