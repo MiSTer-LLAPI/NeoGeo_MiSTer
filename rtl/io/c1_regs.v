@@ -20,7 +20,7 @@
 
 module c1_regs(
 	input CLK,
-	input nICOM_ZONE,
+	input nICOM_ZONE, sound_wait,
 	input RW,
 	inout [15:8] M68K_DATA,
 	output [7:0] SDD_RD,
@@ -47,14 +47,15 @@ module c1_regs(
 	assign M68K_DATA = (RW & ~nICOM_ZONE) ? SDD_LATCH_REP : 8'bzzzzzzzz;
 	
 	// REG_SOUND write
-	assign nSDW = (RW | nICOM_ZONE);		// Tells Z80 that 68k sent a command
+	wire nCMD_ZONE = nICOM_ZONE | sound_wait;
+	assign nSDW = (RW | nCMD_ZONE);		// Tells Z80 that 68k sent a command
 	
 	// REG_SOUND write
 	always @(posedge CLK)		// Which one has priority ?
 	begin
 		reg nICOM_ZONE_d;
 		reg nSDZ80CLR_d;
-		nICOM_ZONE_d <= nICOM_ZONE;
+		nICOM_ZONE_d <= nCMD_ZONE;
 		nSDZ80CLR_d <= nSDZ80CLR;
 
 		if (!nSDZ80CLR & nSDZ80CLR_d)
@@ -62,7 +63,7 @@ module c1_regs(
 			SDD_LATCH_CMD <= 8'b00000000;
 		end
 		else
-		if (!nICOM_ZONE & nICOM_ZONE_d) begin
+		if (!nCMD_ZONE & nICOM_ZONE_d) begin
 			if (!RW)
 				SDD_LATCH_CMD <= M68K_DATA;
 		end

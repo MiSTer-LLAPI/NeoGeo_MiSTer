@@ -9,12 +9,16 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Verify video, memory and USER I/O
+      - name: Verify video, sound, memory and USER I/O
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y iverilog
           iverilog -g2012 -s lspc_guard_tb -o /tmp/lspc rtl/io/neogeo_lspc_guard.v tests/lspc_guard_tb.sv
           vvp /tmp/lspc
+          iverilog -g2012 -s sound_guard_tb -o /tmp/sound_guard tests/sound_guard_tb.sv rtl/io/neogeo_sound_guard.sv rtl/io/neo_c1.v rtl/io/c1_regs.v rtl/io/c1_wait.v rtl/io/c1_inputs.v rtl/io/z80ctrl.v
+          vvp /tmp/sound_guard
+          iverilog -g2012 -s sound_bus48_tb -o /tmp/sound_bus48 tests/sound_bus48_tb.sv rtl/cpu/neogeo_cpu_bus48.sv rtl/io/neogeo_sound_guard.sv rtl/io/neo_c1.v rtl/io/c1_regs.v rtl/io/c1_wait.v rtl/io/c1_inputs.v
+          for ps in 0 5207 5208 5209 9000; do vvp /tmp/sound_bus48 +offset_ps=$ps; done
           iverilog -g2012 -s sdram_turbo_tb -o /tmp/sdram rtl/mem/sdram_mux.sv tests/sdram_turbo_tb.sv
           vvp /tmp/sdram
           iverilog -g2012 -s db15_test -o /tmp/db15 rtl/io/neogeo_snac_db15.sv tests/db15_test.sv

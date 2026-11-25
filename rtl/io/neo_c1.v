@@ -23,6 +23,10 @@
 
 module neo_c1(
 	input CLK,
+    input reset, turbo_cart, tick_4m,
+    input z80_ram_write, z80_port_write,
+    input [15:0] z80_addr,
+    output sound_wait,
 	input [21:17] M68K_ADDR,
 	inout [15:8] M68K_DATA,
 	input A22Z, A23Z,
@@ -67,7 +71,16 @@ module neo_c1(
 	wire nSROM_ZONE;		// Internal
 	wire nSRAM_ZONE;		// Internal (external for PCB)
 	
-	c1_regs C1REGS(CLK, nICOM_ZONE, RW, M68K_DATA, SDD_RD, SDD_WR, nSDZ80R, nSDZ80W, nSDZ80CLR, nSDW);
+	// Both the Z80 and the cartridge bus run on CLK (the experimental CPU bridge
+    // presents the 68000 transaction in this domain as well).
+    neogeo_sound_guard sound_guard (
+        .clk(CLK), .reset(reset), .turbo_cart(turbo_cart), .tick_4m(tick_4m),
+        .command_write(!RW && !nICOM_ZONE), .command_data(M68K_DATA),
+        .reset_command_read(!nSDZ80R && SDD_RD == 8'h03),
+        .z80_ram_write(z80_ram_write), .z80_addr(z80_addr), .z80_data(SDD_WR),
+        .z80_port_write(z80_port_write), .wait_cpu(sound_wait)
+    );
+    c1_regs C1REGS(CLK, nICOM_ZONE, sound_wait, RW, M68K_DATA, SDD_RD, SDD_WR, nSDZ80R, nSDZ80W, nSDZ80CLR, nSDW);
 	
 	c1_wait C1WAIT(CLK, CLK_EN_68K_P, nAS, SYSTEM_TYPE[1], nROM_ZONE, nWRAM_ZONE, nPORT_ZONE, nCARD_ZONE, nSROM_ZONE,
 					nROMWAIT, nPWAIT0, nPWAIT1, PDTACK, nDTACK);

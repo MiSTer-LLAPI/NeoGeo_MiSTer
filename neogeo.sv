@@ -1343,7 +1343,8 @@ wire [15:0] cpu_write_data, bridge_write_data, bridge_read_data;
 wire [2:0] cpu_fc, bridge_fc;
 wire cpu_nas, cpu_nuds, cpu_nlds, cpu_rnw;
 wire bridge_nas, bridge_nuds, bridge_nlds, bridge_rnw, bridge_ndtack;
-wire board_ndtack = nDTACK_ADJ | lspc_wait | peripheral_wait;
+wire sound_wait;
+wire board_ndtack = nDTACK_ADJ | lspc_wait | peripheral_wait | sound_wait;
 neogeo_cpu_bus48 cpu_bus (
     .clk_cpu(cpu_master), .clk_sys(CLK_48M), .reset(!nRESET || !cpu_48mhz),
     .cpu_addr(cpu_addr), .cpu_write_data(cpu_write_data), .cpu_fc(cpu_fc),
@@ -1726,6 +1727,9 @@ wire [11:0] joy_1 = status[43] ? joy_1a : status[44] ? joy_1b : joy_menu_p2;
 
 
 neo_c1 C1(
+    .reset(!nRESET), .turbo_cart(cpu_turbo && !SYSTEM_CDx), .tick_4m(CLK_EN_4M_P),
+    .z80_ram_write(!nZRAMCS && !nSDMWR), .z80_port_write(!nIORQ && !nSDWR),
+    .z80_addr(SDA), .sound_wait(sound_wait),
 	.CLK(CLK_48M),
 	.M68K_ADDR(M68K_ADDR[21:17]),
 	.M68K_DATA(M68K_DATA[15:8]), .A22Z(A22Z), .A23Z(A23Z),

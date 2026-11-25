@@ -30,7 +30,6 @@ module c1_wait(
 	
 	//assign nPDTACK = ~(nPORT_ZONE | PDTACK);		// Really a NOR ? May stall CPU if PDTACK = GND
 	
-	assign nDTACK = nAS | WAIT_MUX;
 	
 	// When nROMWAIT == 1, nDTACK = nAS for nROM_ZONE (no wait)
 	wire WAIT_MUX = (!nROM_ZONE & !nROMWAIT) ? (WAIT_CNT > 3) :
@@ -38,6 +37,8 @@ module c1_wait(
 			(!nPORT_ZONE & (!nPWAIT1 &  nPWAIT0)) ? (WAIT_CNT > 2) :
 			(!nCARD_ZONE) ? (WAIT_CNT > 3) :		// Maybe 2 but not important here, used JEIDA compliance
 			1'b0;
+
+	assign nDTACK = nAS | WAIT_MUX;
 	
 	always @(posedge CLK)
 	if (CLK_EN_68K_P) begin

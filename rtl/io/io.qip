@@ -9,6 +9,7 @@ set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) resetp.
 set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) syslatch.v ]
 set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) neo_e0.v ]
 set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) neo_c1.v ]
+set_global_assignment -name SYSTEMVERILOG_FILE [file join $::quartus(qip_path) neogeo_sound_guard.sv ]
 set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) c1_wait.v ]
 set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) c1_regs.v ]
 set_global_assignment -name VERILOG_FILE [file join $::quartus(qip_path) c1_inputs.v ]
