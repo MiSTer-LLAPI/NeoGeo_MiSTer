@@ -127,7 +127,9 @@ module neogeo_autofire_settings (
     assign gesture[0] = gesture1;
     assign gesture[1] = gesture2;
 
-    for (genvar p = 0; p < 2; p = p + 1) begin : player
+    genvar p;
+    generate
+    for (p = 0; p < 2; p = p + 1) begin : player
         reg override_active = 0;
         reg [3:0] local_selection = 0;
         reg [3:0] previous_menu = 0;
@@ -148,6 +150,7 @@ module neogeo_autofire_settings (
                 override_active <= 0;
         end
     end
+    endgenerate
     assign {mode1, button1} = effective[0];
     assign {mode2, button2} = effective[1];
 endmodule
