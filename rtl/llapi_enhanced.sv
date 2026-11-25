@@ -122,7 +122,7 @@ module LLAPI_Enhanced #(
     input [15:0] CMD_PAYLOAD, // low byte first: duration, then level for 1C
     output CMD_READY,
     output reg CMD_DONE,
-    output reg [7:0] CMD_ERROR, // 0=completed, E0=timeout, E1=rejected, E2=premature raw reply
+    output reg [7:0] CMD_ERROR, // 0=completed, E0=timeout, E1=rejected, E2=premature reply during payload transmission
     output reg [103:0] CMD_REPLY,
     output reg [3:0] CMD_REPLY_LENGTH,
     output reg MODES_VALID,
@@ -295,7 +295,7 @@ wire transaction_active = state != STATE_WAIT_RELEASE && (stage != READ_IDLE || 
 wire extended_ack_wait = EXTENDED_POLL_ACK && stage == READ_POLL && state == STATE_READ_START;
 wire watchdog_expired = transaction_active && !extended_ack_wait &&
     transaction_timer >= ((stage == READ_POLL || raw_active) ? TIME_POLL : RECEIVE_START_TIMEOUT);
-wire premature_reply = raw_active && state == STATE_IDLE && stage == WRITE_PAYLOAD && is_latched;
+wire premature_reply = command_busy && state == STATE_IDLE && stage == WRITE_PAYLOAD && is_latched;
 wire poll_due = sync_counter >= ((enable && poll_time > TIME_BUFFER &&
     poll_offset < poll_time - TIME_BUFFER) ? poll_time - poll_offset : poll_time);
 assign CMD_READY = COMMAND_INTERFACE && ENABLE && enable && command_slot &&
@@ -385,9 +385,10 @@ always_ff @(posedge CLK_50M) begin
                     cycle <= 0; state <= STATE_WRITE_START; stage <= READ_COMMAND;
                 end
             end else if (CMD_READY && CMD_VALID) begin
-                command_slot <= 0; CMD_ERROR <= 0; CMD_REPLY <= 0; CMD_REPLY_LENGTH <= 0;
+                CMD_REPLY <= 0; CMD_REPLY_LENGTH <= 0;
                 if (!(request_raw ? extension_valid : valid_command(CMD_OPCODE))) begin CMD_DONE <= 1; CMD_ERROR <= 8'he1; end
                 else begin
+                    command_slot <= 0; CMD_ERROR <= 0;
                     command_busy <= 1; active_opcode <= CMD_OPCODE; raw_selected <= request_raw;
                     write_buffer <= request_raw ? {CMD_TX_DATA, CMD_OPCODE} : {CMD_PAYLOAD, CMD_OPCODE};
                     payload_remaining <= request_raw ? CMD_TX_LENGTH : CMD_OPCODE == 8'h1c ? 2 : (CMD_OPCODE == 8'h20 ? 1 : 0);

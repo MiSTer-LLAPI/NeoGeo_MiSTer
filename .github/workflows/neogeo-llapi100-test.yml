@@ -1,7 +1,7 @@
-name: NeoGeo Turbo LLAPI 1.1 Test 1
+name: NeoGeo Turbo LLAPI 1.2 Test 1
 on:
   push:
-    branches: [test-neogeo-turbo-llapi-1-1-test1]
+    branches: [test-neogeo-turbo-llapi-1-2-test1]
 permissions:
   contents: read
 jobs:
@@ -67,6 +67,135 @@ jobs:
                 rtl/cpu/FX68K/fx68k.sv rtl/cpu/FX68K/fx68kAlu.sv rtl/cpu/FX68K/uaddrPla.sv
               cd rtl/cpu/FX68K
               for ps in 0 5207 5208 5209 9000; do /tmp/cpu_bus48/Vcpu_bus48_tb +offset_ps=$ps; done'
+      - name: Simulate LLAPI 1.2 command regressions
+        run: |
+          set -euo pipefail
+          cat > /tmp/llapi12-commands.sv <<'LLAPITEST'
+          // Copyright 2026 Ricardo Saraiva aka RickDangerous (UltimateMiSTer.com)
+          `timescale 1ns/1ps
+          module commands_tb #(parameter integer CASE = 0, parameter bit EARLY = 1);
+              reg clk = 0, enable = 0, submit = 0, raw = 0;
+              reg remote_latch = 1, remote_data = 1;
+              reg [7:0] opcode;
+              wire host_latch, host_data, valid, update, ready, done;
+              wire [7:0] controller_type, error;
+              wire [31:0] buttons;
+              wire [71:0] analog_data;
+              always #10 clk = ~clk;
+              LLAPI_Enhanced #(.COMMAND_INTERFACE(1), .RAW_COMMANDS(1), .AUTO_MODES(0), .IMMEDIATE_REPOLL(0), .ALLOW_MODE_WRITES(1)) dut (
+                  .CLK_50M(clk), .LLAPI_SYNC(1'b0), .ENABLE(enable),
+          `ifdef ARCADE_DRIVER
+                  .REPOLL_OFF(1'b0),
+          `endif
+                  .IO_LATCH_IN(host_latch & remote_latch), .IO_DATA_IN(host_data & remote_data),
+                  .IO_LATCH_OUT(host_latch), .IO_DATA_OUT(host_data),
+                  .STATUS_VALID(valid), .STATUS_UPDATE(update),
+                  .LLAPI_TYPE(controller_type), .LLAPI_BUTTONS(buttons), .LLAPI_ANALOG(analog_data),
+                  .CMD_READY(ready), .CMD_VALID(submit), .CMD_OPCODE(opcode), .CMD_PAYLOAD(16'h3412),
+                  .CMD_RAW(raw), .CMD_TX_LENGTH(5'd2), .CMD_RX_LENGTH(4'd0),
+                  .CMD_TX_DATA(192'h3412), .CMD_DONE(done), .CMD_ERROR(error)
+              );
+              integer completions = 0;
+              always @(posedge done) completions++;
+              task automatic ticks(input integer n);
+                  repeat (n) @(negedge clk);
+              endtask
+
+              task automatic expect_opcode(input [7:0] wanted);
+                  reg [7:0] decoded;
+                  @(negedge host_latch);
+                  ticks(251);
+                  for (int i = 0; i < 8; i++) begin
+                      decoded[i] = ~host_data;
+                      if (i < 7) ticks(224);
+                  end
+                  if (decoded !== wanted) $fatal(1, "expected opcode %h, got %h", wanted, decoded);
+                  @(posedge host_latch);
+              endtask
+
+              task automatic remote_reply(input [103:0] payload, input integer bytes);
+                  ticks(600);
+                  remote_latch = 0; remote_data = 1; ticks(100);
+                  for (int n = 0; n < bytes; n++) begin
+                      for (int i = 0; i < 8; i++) begin
+                          remote_data = 1; ticks(109);
+                          remote_data = ~payload[n*8+i]; ticks(115);
+                      end
+                      remote_data = 1; ticks(49); remote_data = 0; ticks(50);
+                  end
+                  remote_latch = 1; remote_data = 1;
+              endtask
+
+              task automatic poll_and_status(input integer ack_clocks, input bit fire);
+                  reg [103:0] payload;
+                  payload = 104'h0800008080808080800000001b;
+                  payload[8] = fire;
+                  expect_opcode(8'h00); ticks(152);
+                  remote_latch = 0; remote_data = 0; ticks(ack_clocks);
+                  remote_latch = 1; remote_data = 1;
+                  expect_opcode(8'h01); remote_reply(payload, 13);
+                  @(posedge update); @(negedge clk);
+                  if (!valid || controller_type !== 8'h1b || buttons !== {31'd0,fire} ||
+                      analog_data !== 72'h080000808080808080)
+                      $fatal(1, "wrong complete status: valid=%b id=%h buttons=%h analog=%h",
+                             valid, controller_type, buttons, analog_data);
+              endtask
+
+
+              task automatic request(input [7:0] value);
+                  @(negedge clk);
+                  opcode = value;
+                  submit = 1;
+                  ticks(1);
+                  submit = 0;
+              endtask
+
+              initial begin
+                  ticks(5);
+                  enable = 1;
+                  poll_and_status(200, 0);
+                  wait (ready);
+                  if (CASE == 0) begin
+                      request(8'hff);
+                      if (!done || error !== 8'he1 || !host_latch || !ready)
+                          $fatal(1, "rejection must keep command slot and leave the bus idle");
+                      ticks(1);
+                  end
+                  raw = CASE == 3;
+                  opcode = CASE == 2 ? 8'h20 : CASE == 3 ? 8'h40 : 8'h1c;
+                  request(opcode);
+                  expect_opcode(opcode);
+                  if (EARLY && CASE != 0) begin
+                      // Assert after host release, before the next byte can take the bus.
+                      ticks(155);
+                      remote_latch = 0;
+                      ticks(20);
+                      if (error !== 8'he2 || completions != 1)
+                          $fatal(1, "early reply did not terminate with one E2: %h (%d)", error, completions);
+                  end else begin
+                      expect_opcode(8'h12);
+                      if (CASE != 2) expect_opcode(8'h34);
+                      @(posedge done);
+                      ticks(1);
+                      if (error !== 0 || ready || completions != (CASE == 0 ? 2 : 1))
+                          $fatal(1, "unexpected completion or slot state: %h (%d)", error, completions);
+                  end
+                  $display("PASS case=%0d early=%0d", CASE, EARLY);
+                  $finish;
+              end
+
+              initial begin
+                  #40000000;
+                  $fatal(1, "command bench timeout");
+              end
+          endmodule
+          LLAPITEST
+          for case_id in 0 1 2 3; do
+            for early in 0 1; do
+              iverilog -g2012  -s commands_tb -Pcommands_tb.CASE="$case_id" -Pcommands_tb.EARLY="$early" -o /tmp/llapi12 rtl/llapi_enhanced.sv /tmp/llapi12-commands.sv
+              vvp /tmp/llapi12
+            done
+          done
       - name: Compile NeoGeo with Quartus 17.0.2
         run: |
           docker run --rm -v "$PWD:/src" -w /src --entrypoint bash raetro/quartus:17.0 -ec '
@@ -89,13 +218,13 @@ jobs:
       - name: Stage test core after timing acceptance
         run: |
           mkdir -p test
-          cp output_files/NeoGeo.rbf test/NeoGeo_Turbo_LLAPI11_Test1.rbf
-          (cd test && sha256sum NeoGeo_Turbo_LLAPI11_Test1.rbf > SHA256SUMS)
+          cp output_files/NeoGeo.rbf test/NeoGeo_Turbo_LLAPI12_Test1.rbf
+          (cd test && sha256sum NeoGeo_Turbo_LLAPI12_Test1.rbf > SHA256SUMS)
       - name: Save RBF and reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: NeoGeo-Turbo-LLAPI11-Test1
+          name: NeoGeo-Turbo-LLAPI12-Test1
           path: |
             test/
             output_files/*.rpt
