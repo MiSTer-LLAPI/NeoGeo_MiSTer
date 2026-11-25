@@ -7,10 +7,11 @@ module neogeo_snac_pads_tb;
     reg [6:0] input_lines;
     wire [6:0] pins;
     wire [11:0] pad1,pad2;
+    wire report_ready;
     localparam TICK=8, SCAN=80;
     neogeo_snac_pads #(.TICK_CYCLES(TICK),.SCAN_TICKS(SCAN)) dut(
         .clk(clk),.reset(reset),.mode(mode),.user_in(input_lines),
-        .user_out(pins),.pad1(pad1),.pad2(pad2));
+        .user_out(pins),.report_ready(report_ready),.pad1(pad1),.pad2(pad2));
 
     reg plugged=1, six=1, sat_digital=1;
     reg [15:0] snes1=0,snes2=0;
@@ -65,7 +66,14 @@ module neogeo_snac_pads_tb;
     end
     integer checks=0;
     task expect_pads(input [11:0] a,b);
+        integer wait_cycles;
         begin
+            if (!report_ready) begin
+                for (wait_cycles=0; wait_cycles < SCAN*TICK && !report_ready; wait_cycles++)
+                    @(negedge clk);
+                if (!report_ready || {pad1,pad2} !== {a,b})
+                    $fatal(1,"mode=%d first ready report failed for held input",mode);
+            end
             repeat(2*SCAN*TICK) @(negedge clk);
             if ({pad1,pad2} !== {a,b})
                 $fatal(1,"mode=%d expected %h/%h got %h/%h",mode,a,b,pad1,pad2);
@@ -76,6 +84,8 @@ module neogeo_snac_pads_tb;
         begin
             @(negedge clk); mode=next; #0;
             if (pins!==7'h7f || {pad1,pad2}!==24'd0) $fatal(1,"state leaked across mode switch");
+            @(negedge clk);
+            if (report_ready) $fatal(1,"stale report after mode switch");
         end
     endtask
     function automatic [11:0] snes_expected(input integer b);

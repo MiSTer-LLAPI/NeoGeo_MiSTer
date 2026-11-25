@@ -4,7 +4,7 @@ module db15_test;
     always #10 clk=!clk;
     wire [6:0] user_out;
     wire [11:0] pad1,pad2;
-    wire nload,serial_clk,data_line;
+    wire nload,serial_clk,data_line,report_ready;
     // Deliberately different propagation/rise times; a common-clock model
     // would hide LOAD/CLK races and sampling the bit after it's shifted.
     assign #(1100,5) nload = user_out[0];
@@ -46,8 +46,12 @@ module db15_test;
         expected2[20]='h080;expected2[21]='h040;expected2[22]='h020;expected2[23]='h010;
         #2010;
         if(user_out!==7'h7f) $fatal(1,"inactive outputs");
-        reset=0;enable=1;
-        frame();expect_pad(0,0);
+        reset=0;enable=1;contacts_n=~24'd8;
+        @(negedge nload); repeat (20) @(posedge serial_clk);
+        if (report_ready) $fatal(1,"Partial DB15 report marked ready");
+        @(negedge nload);
+        if (!report_ready) $fatal(1,"Missing first complete DB15 report");
+        expect_pad('h010,0);
         for(i=0;i<24;i=i+1) begin
             contacts_n=~(24'd1<<i);frame();expect_pad(expected1[i],expected2[i]);
         end

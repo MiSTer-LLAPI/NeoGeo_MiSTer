@@ -137,6 +137,16 @@ localparam CONF_STR = {
 	"O3,Video Mode,NTSC,PAL;",
 	"H0-;",
 	"H0oD,CPU Turbo,Off,On (24 MHz);",
+	"P2,Autofire;",
+	"P2O[67:66],P1 Autofire,Off,Hold,Toggle;",
+	"D6P2O[65:64],P1 Button,A,B,C,D;",
+	"D6P2O[69:68],P1 Speed,Normal,Slow,Fast;",
+	"P2-;",
+	"P2O[73:72],P2 Autofire,Off,Hold,Toggle;",
+	"D7P2O[71:70],P2 Button,A,B,C,D;",
+	"D7P2O[75:74],P2 Speed,Normal,Slow,Fast;",
+	"P2-;",
+	"P2-,Choose a button for each player;",
 	"-;",
 	"oEG,USER I/O,LLAPI 2P,SNAC DB9 (MD),SNAC DB15,SNAC SNES,SNAC Saturn;",
 	"o9A,Input,Joystick or Spinner,Joystick,Spinner,Mouse(Irr.Maze);",
@@ -326,7 +336,7 @@ wire  [1:0] buttons;
 wire [10:0] ps2_key;
 wire [24:0] ps2_mouse;
 wire        forced_scandoubler;
-wire [63:0] status;
+wire [127:0] status;
 
 wire [64:0] rtc;
 
@@ -353,6 +363,7 @@ wire [21:0] gamma_bus;
 wire [15:0] usb0, usb1, usb2, usb3;
 wire llapi_active, snac_active;
 wire [11:0] native_pad1, native_pad2;
+wire vblank;
 reg enable_meta = 0, llapi_enable_50 = 0;
 always @(posedge CLK_50M) begin
     enable_meta <= llapi_active;
@@ -426,18 +437,47 @@ endgenerate
 
 assign llapi_osd = llapi_active && (|osd_chord);
 
+wire [3:0] autofire_gesture1, autofire_gesture2;
+wire snac_report_ready;
+wire [1:0] autofire_mode1, autofire_mode2, autofire_button1, autofire_button2;
+wire [1:0] autofire_speed1 = status[69:68], autofire_speed2 = status[75:74];
+wire [127:0] autofire_status_update;
+wire autofire_status_set;
+neogeo_autofire_settings autofire_settings (
+    .clk(clk_sys), .reset(RESET), .status(status),
+    .gesture1(autofire_gesture1), .gesture2(autofire_gesture2),
+    .mode1(autofire_mode1), .mode2(autofire_mode2),
+    .button1(autofire_button1), .button2(autofire_button2),
+    .status_in(autofire_status_update), .status_set(autofire_status_set)
+);
+wire [1:0] menu_autofire = {
+    autofire_mode2 == 1 || autofire_mode2 == 2,
+    autofire_mode1 == 1 || autofire_mode1 == 2
+};
 neogeo_user_port user_port(
     .clk(clk_sys), .reset(RESET), .game_reset(!nRESET_CORE), .vblank(vblank),
-    .osd(OSD_STATUS), .requested(status[48:46]),
+    .osd(OSD_STATUS), .requested(status[48:46]), .gesture1(autofire_gesture1), .gesture2(autofire_gesture2),
     .user_in(USER_IN), .user_out(USER_OUT), .db15_drive(USER_DB15_DRIVE),
     .llapi_out({1'b1,llapi_data[1],llapi_latch[1],2'b10,llapi_data[0],llapi_latch[0]}),
-    .llapi_active(llapi_active), .snac_active(snac_active), .pad1(native_pad1), .pad2(native_pad2)
+    .llapi_active(llapi_active), .snac_active(snac_active), .snac_report_ready(snac_report_ready), .pad1(native_pad1), .pad2(native_pad2)
 );
 
 // Register the complete input report before it feeds the 68k input ports.
 // This splits USER I/O selection from the path through the CPU data bus to SDRAM.
 wire [63:0] usb_players = {usb0, usb1, usb2, usb3};
+// Reacquiring a reader after the OSD emits released controls before its
+// first scan. A held action must not look like a new Toggle press.
+reg captured_report_ready = 0;
+// P1 can come from USB0, LLAPI0 or LLAPI1; P2 from USB1, USB0 or LLAPI1.
+wire [1:0] p1_binding = !llapi_active ? 2'd0 : llapi_seen[0] ? 2'd1 : {llapi_seen[1], 1'b0};
+wire [1:0] p2_binding = !llapi_active ? 2'd0 : (&llapi_seen) ? 2'd2 : {1'b0, |llapi_seen};
+reg [1:0] captured_p1_binding = 0, captured_p2_binding = 0;
+wire p1_report_ready = captured_report_ready && p1_binding == captured_p1_binding;
+wire p2_report_ready = captured_report_ready && p2_binding == captured_p2_binding;
 always_ff @(posedge clk_sys) begin
+    captured_report_ready <= llapi_active || snac_report_ready || status[48:46] > 4;
+    captured_p1_binding <= p1_binding;
+    captured_p2_binding <= p2_binding;
     if (snac_active) begin
         {joystick_0, joystick_1, joystick_2, joystick_3} <=
             {usb0 | {4'b0, native_pad1}, usb1 | {4'b0, native_pad2}, usb2, usb3};
@@ -467,8 +507,9 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(2)) hps_io
 	.buttons(buttons),
 	.ps2_key(ps2_key),
 
-	.status(status),				// status read (32 bits)
-	.status_menumask({status[22], 9'd0, en216p, bk_autosave | ~bk_pending, ~dbg_menu,~SYSTEM_MVS,1'b0,SYSTEM_CDx}),
+	.status(status),
+	.status_in(autofire_status_update), .status_set(autofire_status_set),				// HPS menu status
+	.status_menumask({status[22], 7'd0, !menu_autofire[1], !menu_autofire[0], en216p, bk_autosave | ~bk_pending, ~dbg_menu,~SYSTEM_MVS,1'b0,SYSTEM_CDx}),
 
 	.RTC(rtc),
 	.sdram_sz(sdram_sz),
@@ -1609,14 +1650,35 @@ neo_g0 G0(
 	.CDD({8'hFF, CDD}), .PC(PAL_RAM_DATA)
 );
 
-wire [11:0] joy_0a = P1_OUT[0] ? (joystick_2[11:0] | {P1_OUT[2],5'b00000}) : (joystick_0[11:0] | {P1_OUT[2],4'b0000});
-wire [11:0] joy_1a = P1_OUT[0] ? (joystick_3[11:0] | {P1_OUT[2],5'b00000}) : (joystick_1[11:0] | {P1_OUT[2],4'b0000});
+wire [11:0] autofire_pad1, autofire_pad2;
+neogeo_menu_autofire menu_af_p1 (
+    .clk(clk_sys), .reset(RESET || !nRESET_CORE), .osd(OSD_STATUS), .vblank(vblank),
+    .report_ready(p1_report_ready), .mode(autofire_mode1), .speed(autofire_speed1), .button(autofire_button1),
+    .pad_in(joystick_0[11:0]), .pad_out(autofire_pad1)
+);
+neogeo_menu_autofire menu_af_p2 (
+    .clk(clk_sys), .reset(RESET || !nRESET_CORE), .osd(OSD_STATUS), .vblank(vblank),
+    .report_ready(p2_report_ready), .mode(autofire_mode2), .speed(autofire_speed2), .button(autofire_button2),
+    .pad_in(joystick_1[11:0]), .pad_out(autofire_pad2)
+);
 
-wire [11:0] joy_0b = ({12{P1_OUT[0]}} & joystick_0[11:0]) | ({12{P1_OUT[1]}} & joystick_2[11:0]) | {P1_OUT[2], 9'd0};
-wire [11:0] joy_1b = ({12{P2_OUT[0]}} & joystick_1[11:0]) | ({12{P2_OUT[1]}} & joystick_3[11:0]) | {P2_OUT[2], 9'd0};
+// Keep the autofire selector off the CPU input-to-SDRAM path. Sample the
+// combo keys with the same report so they reach the game on the same cycle.
+reg [11:0] joy_menu_p1 = 0, joy_menu_p2 = 0;
+reg [1:0] combo_p1 = 0, combo_p2 = 0;
+always @(posedge clk_sys) begin
+    {combo_p1, joy_menu_p1} <= {joystick_0[13:12], autofire_pad1};
+    {combo_p2, joy_menu_p2} <= {joystick_1[13:12], autofire_pad2};
+end
 
-wire [11:0] joy_0 = status[43] ? joy_0a : status[44] ? joy_0b : joystick_0;
-wire [11:0] joy_1 = status[43] ? joy_1a : status[44] ? joy_1b : joystick_1;
+wire [11:0] joy_0a = P1_OUT[0] ? (joystick_2[11:0] | {P1_OUT[2],5'b00000}) : (joy_menu_p1 | {P1_OUT[2],4'b0000});
+wire [11:0] joy_1a = P1_OUT[0] ? (joystick_3[11:0] | {P1_OUT[2],5'b00000}) : (joy_menu_p2 | {P1_OUT[2],4'b0000});
+
+wire [11:0] joy_0b = ({12{P1_OUT[0]}} & joy_menu_p1) | ({12{P1_OUT[1]}} & joystick_2[11:0]) | {P1_OUT[2], 9'd0};
+wire [11:0] joy_1b = ({12{P2_OUT[0]}} & joy_menu_p2) | ({12{P2_OUT[1]}} & joystick_3[11:0]) | {P2_OUT[2], 9'd0};
+
+wire [11:0] joy_0 = status[43] ? joy_0a : status[44] ? joy_0b : joy_menu_p1;
+wire [11:0] joy_1 = status[43] ? joy_1a : status[44] ? joy_1b : joy_menu_p2;
 
 
 neo_c1 C1(
@@ -1633,8 +1695,8 @@ neo_c1 C1(
 	.nLSPOE(nLSPOE), .nLSPWE(nLSPWE),
 	.nCRDO(nCRDO), .nCRDW(nCRDW), .nCRDC(nCRDC),
 	.nSDW(nSDW),
-	.P1_IN(~{(joy_0[9:8]|ps2_mouse[2]), {use_mouse ? ms_pos : use_sp ? {|{joy_0[7:4],ps2_mouse[1:0]},sp0} : {joy_0[7:4]|{3{~xram & joy_0[11]}}|{{2{joystick_0[13]}},{2{joystick_0[12]}}}, joy_0[0], joy_0[1], joy_0[2], joy_0[3]}}}),
-	.P2_IN(~{ joy_1[9:8],               {use_mouse ? ms_btn : use_sp ? {|{joy_1[7:4]},               sp1} : {joy_1[7:4]|{3{~xram & joy_1[11]}}|{{2{joystick_1[13]}},{2{joystick_1[12]}}}, joy_1[0], joy_1[1], joy_1[2], joy_1[3]}}}),
+	.P1_IN(~{(joy_0[9:8]|ps2_mouse[2]), {use_mouse ? ms_pos : use_sp ? {|{joy_0[7:4],ps2_mouse[1:0]},sp0} : {joy_0[7:4]|{3{~xram & joy_0[11]}}|{{2{combo_p1[1]}},{2{combo_p1[0]}}}, joy_0[0], joy_0[1], joy_0[2], joy_0[3]}}}),
+	.P2_IN(~{ joy_1[9:8],               {use_mouse ? ms_btn : use_sp ? {|{joy_1[7:4]},               sp1} : {joy_1[7:4]|{3{~xram & joy_1[11]}}|{{2{combo_p2[1]}},{2{combo_p2[0]}}}, joy_1[0], joy_1[1], joy_1[2], joy_1[3]}}}),
 	.nCD1(nCD1), .nCD2(nCD2),
 	.nWP(0),			// Memory card is never write-protected
 	.nROMWAIT(~rom_wait), .nPWAIT0(~p_wait[0]), .nPWAIT1(~p_wait[1]), .PDTACK(1),
@@ -2218,7 +2280,7 @@ wire [7:0] G8 = G6[6] ? 8'd0 : {G6[5:0],  G6[4:3]};
 wire [7:0] B8 = B6[6] ? 8'd0 : {B6[5:0],  B6[4:3]};
 
 wire [7:0] r,g,b;
-wire hs,vs,hblank,vblank;
+wire hs,vs,hblank;
 video_cleaner video_cleaner
 (
 	.clk_vid(CLK_VIDEO),

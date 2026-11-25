@@ -9,6 +9,7 @@ module neogeo_snac_pads #(
     input [1:0] mode,                     // 0 off, 1 MD, 2 SNES, 3 Saturn
     input [6:0] user_in,
     output [6:0] user_out,
+    output reg report_ready = 0,
     output [11:0] pad1, pad2              // ABC combo, coin, select, start, DCBA, UDLR
 );
     localparam MD = 2'd1, SNES = 2'd2, SATURN = 2'd3;
@@ -53,6 +54,7 @@ module neogeo_snac_pads #(
     always @(posedge clk) begin
         last_mode <= mode;
         if (!scanning) begin
+            report_ready <= 0;
             ticks <= 0;
             phase <= 0;
             drive <= 7'h7f;
@@ -75,6 +77,7 @@ module neogeo_snac_pads #(
                     5: begin md_six <= md_in[3:0] == 0; drive[4] <= 1; end
                     6: begin md_ext <= md_in[3:0]; drive[4] <= 0; end
                     7: begin
+                        report_ready <= 1;
                         drive[4] <= 1;
                         first <= md_valid ? {1'b0, md_select, md_select, md_start,
                             md_six && !md_ext[2], !md_high[5], !md_high[4], !md_start_a[0],
@@ -95,6 +98,7 @@ module neogeo_snac_pads #(
                         drive[3] <= 1;
                     end
                     if (phase == 35) begin
+                        report_ready <= 1;
                         first <= snes_pad(snes1);
                         second <= snes_pad(snes2);
                     end
@@ -105,6 +109,7 @@ module neogeo_snac_pads #(
                     2: begin sat_main <= sat_in; drive[4] <= 0; drive[6] <= 1; end // Start A C B
                     3: begin sat_dir <= sat_in; drive[4] <= 1; end // R L D U
                     4: begin
+                        report_ready <= 1;
                         // Digital pad ID {L,1,0,0}. A disconnected or analog
                         // pad releases all game inputs on the next scan.
                         first <= sat_in[2:0] == 3'b100

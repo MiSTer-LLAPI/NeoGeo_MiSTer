@@ -7,6 +7,7 @@ module neogeo_snac_db15 #(
     input clk, reset, enable,
     input [6:0] user_in,
     output [6:0] user_out,
+    output reg report_ready = 0,
     output reg [11:0] pad1 = 0,
     output reg [11:0] pad2 = 0
 );
@@ -27,6 +28,7 @@ module neogeo_snac_db15 #(
         data_sync <= data_meta;
 
         if (!running) begin
+            report_ready <= 0;
             divider <= 0;
             step <= 0;
             serial_clk <= 1;
@@ -46,6 +48,7 @@ module neogeo_snac_db15 #(
                 // Sample the stable bit BEFORE driving the next rising edge.
                 shift <= {data_sync, shift[23:1]};
                 if (step == 49) begin
+                    report_ready <= 1;
                     // Native joystick bits: ABC combo, Coin, Select, Start,
                     // D, C, B, A, Up, Down, Left, Right. Select also inserts
                     // a credit on MVS. The non-NeoGeo E/F contacts are unused.

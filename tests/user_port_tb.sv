@@ -3,9 +3,10 @@ module user_port_tb;
     reg clk = 0, reset = 1, game_reset = 0, vblank = 0, osd = 0;
     always #5 clk = !clk;
     reg [2:0] requested = 0;
+    wire [3:0] gesture1, gesture2;
     wire [6:0] user_in = 7'h7f, llapi_out = 7'h29;
     wire [6:0] user_out;
-    wire llapi_active, snac_active, db15_drive;
+    wire llapi_active, snac_active, db15_drive, snac_report_ready;
     wire [11:0] pad1, pad2;
     neogeo_user_port dut(.*);
     task released;
@@ -39,10 +40,16 @@ module user_port_tb;
     endtask
     // The pin-level tests cover the readers. Drive their complete reports here
     // to verify the gesture through the real mode multiplexer and output ports.
+    reg [3:0] observed_gesture1 = 0, observed_gesture2 = 0;
+    always @(posedge clk) begin
+        if (gesture1 != 0) observed_gesture1 <= gesture1;
+        if (gesture2 != 0) observed_gesture2 <= gesture2;
+    end
     task test_autofire_route(input [2:0] target);
-        reg saw_gap;
         begin
             select_mode(target);
+            observed_gesture1 = 0;
+            observed_gesture2 = 0;
             if (target == 2) begin
                 force dut.db15_pad1 = reader1;
                 force dut.db15_pad2 = reader2;
@@ -58,13 +65,10 @@ module user_port_tb;
                 if (pad1[8]) $fatal(1,"Start leaked in mode %d",target);
                 reader1[8] = 0; frames(4);
             end
-            saw_gap = 0;
-            repeat (4) begin
-                frames(1);
-                if (!pad1[4]) saw_gap = 1;
-                if (pad2 !== reader2) $fatal(1,"P2 affected in mode %d",target);
-            end
-            if (!saw_gap) $fatal(1,"Autofire not routed in mode %d",target);
+            if (observed_gesture1 !== 4'b0001 || observed_gesture2 !== 0)
+                $fatal(1,"Gesture routed to wrong button or player in mode %d",target);
+            if (pad1 !== reader1 || pad2 !== reader2)
+                $fatal(1,"Raw buttons changed after gesture in mode %d",target);
             reader1 = 0; #1;
             if (pad1 !== 0) $fatal(1,"Fire stuck in mode %d",target);
             release dut.db15_pad1; release dut.db15_pad2;
