@@ -184,7 +184,7 @@ localparam CONF_STR = {
 	"-;",
 	"-,>> LLAPI enabled core    <<;",
 	"-,>> Connect USER I/O port <<;",
-	"-,LLAPI 1.0.0 on by default;",
+	"-,LLAPI 1.1-test1 on by default;",
 	"-;",
 	"J1,A,B,C,D,Start,Select,Coin,ABC,A+B,C+D;",	// ABC is a special key to press A+B+C at once, useful for keyboards that don't allow more than 2 keypresses at once; A+B/C+D are useful for fighting games (Samurai Shodown, Garou, etc.)
 	"jn,A,B,X,Y,Start,Select,L,R,L2,R2;",	// name mapping 

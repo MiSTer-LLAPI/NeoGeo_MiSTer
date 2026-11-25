@@ -1,6 +1,7 @@
 /* HDL implementation of Low-Latency API protocol
 * 
 * Copyright 2019 Jamie Dickson aka Kitrinx
+* Copyright 2026 Ricardo Saraiva aka RickDangerous (UltimateMiSTer.com)
 * 
 * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
 * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
@@ -18,6 +19,9 @@
 */
 
 // Feb, 1 2019 - Initial Release
+
+// LLAPI Enhanced v1.0.0: optional 40 ms hold time for an asserted Poll ACK.
+// v1.1-test1: qualify the receive lead-in with ten consecutive high DATA samples.
 
 // ***** NOTE ******
 // On IO board 5.5 the bliss box requires external pull-up resistors to communicate properly
@@ -505,8 +509,11 @@ always_ff @(posedge CLK_50M) begin
 				cycle <= 'd10;
 				read_bit <= 3'h0;
 				state <= STATE_READ;
-			end else if (cycle >= TIME_LEADIN && data_in) begin // If we get data high it means we're reading
+			end else if (cycle >= TIME_LEADIN && data_in) begin
 				count <= count + 1'b1;
+			end else begin
+				// A low sample breaks the high run, including during a long Poll ACK.
+				count <= 0;
 			end
 		end
 

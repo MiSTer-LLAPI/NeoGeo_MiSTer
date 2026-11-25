@@ -1,7 +1,7 @@
-name: NeoGeo 48 MHz experimental cartridge build
+name: NeoGeo Turbo LLAPI 1.1 Test 1
 on:
   push:
-    branches: [experiment-neogeo-48mhz]
+    branches: [test-neogeo-turbo-llapi-1-1-test1]
 permissions:
   contents: read
 jobs:
@@ -13,6 +13,12 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y iverilog
+          for extended in 0 1; do
+            for noise in 0 1; do
+              iverilog -g2012 -s receive_start_tb -Preceive_start_tb.EXTENDED_ACK="$extended" -Preceive_start_tb.CHECK_NOISE="$noise" -o /tmp/llapi rtl/llapi_enhanced.sv tests/llapi_receive_start_tb.sv
+              vvp /tmp/llapi
+            done
+          done
           iverilog -g2012 -s lspc_guard_tb -o /tmp/lspc rtl/io/neogeo_lspc_guard.v tests/lspc_guard_tb.sv
           vvp /tmp/lspc
           iverilog -g2012 -s sound_guard_tb -o /tmp/sound_guard tests/sound_guard_tb.sv rtl/io/neogeo_sound_guard.sv rtl/io/neo_c1.v rtl/io/c1_regs.v rtl/io/c1_wait.v rtl/io/c1_inputs.v rtl/io/z80ctrl.v
@@ -80,13 +86,18 @@ jobs:
             /^Type[[:space:]]*:/ { clock = $0 }
             END { if (bad || !count) exit 1 }
           ' output_files/NeoGeo.sta.summary
+      - name: Stage test core after timing acceptance
+        run: |
+          mkdir -p test
+          cp output_files/NeoGeo.rbf test/NeoGeo_Turbo_LLAPI11_Test1.rbf
+          (cd test && sha256sum NeoGeo_Turbo_LLAPI11_Test1.rbf > SHA256SUMS)
       - name: Save RBF and reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: NeoGeo-48MHz-experimental
+          name: NeoGeo-Turbo-LLAPI11-Test1
           path: |
-            output_files/*.rbf
+            test/
             output_files/*.rpt
             output_files/*.summary
             quartus-version.txt
