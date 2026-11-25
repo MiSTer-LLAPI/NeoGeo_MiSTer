@@ -12,7 +12,7 @@ jobs:
       - name: Verify video, memory and USER I/O
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y iverilog verilator
+          sudo apt-get install -y iverilog
           iverilog -g2012 -s lspc_guard_tb -o /tmp/lspc rtl/io/neogeo_lspc_guard.v tests/lspc_guard_tb.sv
           vvp /tmp/lspc
           iverilog -g2012 -s sdram_turbo_tb -o /tmp/sdram rtl/mem/sdram_mux.sv tests/sdram_turbo_tb.sv
@@ -29,11 +29,13 @@ jobs:
           vvp /tmp/user
       - name: Verify the MiSTer status transfer for autofire
         run: |
-          # hps_io has implicit PS/2 wires in the unused PS2DIV=0 branch.
-          verilator --binary --timing -Wno-fatal -Wno-PINMISSING -Wno-PROCASSWIRE \
-            --top-module autofire_hps_tb --Mdir /tmp/autofire_hps \
-            tests/autofire_hps_tb.sv rtl/neogeo_snac_autofire.sv sys/hps_io.sv
-          /tmp/autofire_hps/Vautofire_hps_tb
+          docker run --rm -v "$PWD:/src:ro" -w /src --entrypoint /bin/sh \
+            verilator/verilator:v5.054@sha256:da7845c38c2ab84133661a1b1e2d717d028fe0bc629cc06c77bb80571e610448 -ec '
+              verilator --version
+              verilator --binary --timing -Wno-fatal -Wno-PINMISSING -Wno-PROCASSWIRE \
+                --top-module autofire_hps_tb --Mdir /tmp/autofire_hps \
+                tests/autofire_hps_tb.sv rtl/neogeo_snac_autofire.sv sys/hps_io.sv
+              /tmp/autofire_hps/Vautofire_hps_tb'
       - name: Compile NeoGeo with Quartus 17.0.2
         run: |
           docker run --rm -v "$PWD:/src" -w /src --entrypoint bash raetro/quartus:17.0 -ec '
