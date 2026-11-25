@@ -137,7 +137,7 @@ localparam CONF_STR = {
 	"O3,Video Mode,NTSC,PAL;",
 	"H0-;",
 	"H0oD,CPU Turbo,Off,On;",
-	"H8O[76],CPU Speed,24 MHz,48 MHz (Exp.);",
+	"H8O[76],CPU Speed,24 MHz,48 MHz  (Exp);",
 	"P2,Autofire;",
 	"P2O[67:66],P1 Autofire,Off,Hold,Toggle;",
 	"D6P2O[65:64],P1 Button,A,B,C,D;",
