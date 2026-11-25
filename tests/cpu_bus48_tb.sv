@@ -21,45 +21,26 @@ module cpu_bus48_tb;
     clocks_sync native_clocks(.CLK(clk_sys), .CLK_EN_24M_P(phi24p), .CLK_EN_24M_N(phi24n),
         .nRESETP(1'b1), .CLK_EN_68K_P(phi12p), .CLK_EN_68K_N(phi12n));
 
-    wire [23:1] ca, ba;
-    wire [15:0] cw, bw, cr;
-    wire [2:0] cf, bf;
-    wire cas, cus, cls, crw, bas, bus_upper, bus_lower, brw, cpu_ack;
-    wire [15:0] read_data;
-    wire ndtack;
-    wire [23:1] proxy_addr;
-    wire [15:0] proxy_wdata;
-    wire [2:0] proxy_fc;
-    wire proxy_as, proxy_upper, proxy_lower, proxy_rw;
-    neogeo_cpu_bus48 bridge(
-        .clk_cpu(clk_cpu), .clk_sys(clk_sys), .reset(reset || !turbo48),
-        .cpu_addr(ca), .cpu_write_data(cw), .cpu_fc(cf), .cpu_nas(cas),
-        .cpu_nuds(cus), .cpu_nlds(cls), .cpu_rnw(crw), .cpu_read_data(cr), .cpu_ndtack(cpu_ack),
-        .bus_addr(proxy_addr), .bus_write_data(proxy_wdata), .bus_fc(proxy_fc),
-        .bus_nas(proxy_as), .bus_nuds(proxy_upper), .bus_nlds(proxy_lower), .bus_rnw(proxy_rw),
-        .bus_read_data(read_data), .bus_ndtack(ndtack)
-    );
-    assign {ba, bw, bf, bas, bus_upper, bus_lower, brw} = turbo48 ?
-        {proxy_addr, proxy_wdata, proxy_fc, proxy_as, proxy_upper, proxy_lower, proxy_rw} :
-        {ca, cw, cf, cas, cus, cls, crw};
-    wire core_clk = clk_cpu;
-    wire phi1, phi2;
-    neogeo_cpu_phases phases(.clk_cpu(core_clk), .board_phase(phi24n), .experimental(turbo48),
-        .legacy_p(turbo24 ? phi24p : phi12p), .legacy_n(turbo24 ? phi24n : phi12n),
-        .phi1(phi1), .phi2(phi2));
+    wire [23:1] ba;
+    wire [15:0] bw, read_data;
+    wire [2:0] bf;
+    wire bas, bus_upper, bus_lower, brw, ndtack;
     bit irq_done, saw_iack, tas_locked, saw_tas_write;
     wire irq2 = !cd && memory_end != 0 && !irq_done;
-    cpu_68k cpu(.CLK(core_clk), .CLK_EN_68K_P(phi1), .CLK_EN_68K_N(phi2),
-        .nRESET(!reset), .M68K_ADDR(ca), .FX68K_DATAOUT(cw),
-        .FX68K_DATAIN(turbo48 ? cr : read_data), .nDTACK(turbo48 ? cpu_ack : ndtack),
-        .nAS(cas), .nUDS(cus), .nLDS(cls), .M68K_RW(crw),
-        .FC2(cf[2]), .FC1(cf[1]), .FC0(cf[0]),
-        .IPL2(1'b1), .IPL1(!irq2), .IPL0(1'b1), .nBR(1'b1), .nBGACK(1'b1), .SYSTEM_CDx(cd));
-
-    // At the PLL's specified 0-degree phase, every native bus cycle must
-    // match the original, directly board-clocked CPU, including Neo Geo CD.
-    // The model starts C1's first rising edge one half fast-cycle later than
-    // C0's first, so an offset of 5208 ps aligns their rising edges.
+    wire native_p = turbo24 ? phi24p : phi12p;
+    wire native_n = turbo24 ? phi24n : phi12n;
+    neogeo_cpu_modes cpu(.clk_fast(clk_cpu), .clk_board(clk_sys), .reset(reset), .experimental(turbo48),
+        .native_p(native_p), .native_n(native_n), .system_cd(cd), .ipl({!irq2,1'b1}),
+        .nbr(1'b1), .nbgack(1'b1), .read_data(read_data), .ndtack(ndtack), .addr(ba),
+        .write_data(bw), .fc(bf), .nas(bas), .nuds(bus_upper), .nlds(bus_lower), .rnw(brw));
+    // Observe the selected CPU's own cycle for IACK and TAS across the bridge.
+    wire [23:1] ca = turbo48 ? cpu.fast_addr : cpu.native_addr;
+    wire [2:0] cf = turbo48 ? cpu.fast_fc : cpu.native_fc;
+    wire cas = turbo48 ? cpu.fast_as : cpu.native_as;
+    wire cus = turbo48 ? cpu.fast_us : cpu.native_us;
+    wire cls = turbo48 ? cpu.fast_ls : cpu.native_ls;
+    wire crw = turbo48 ? cpu.fast_rw : cpu.native_rw;
+    // The board-visible bus must match the original CPU in every native mode.
     wire [23:1] ref_addr;
     wire [15:0] ref_wdata;
     wire [2:0] ref_fc;
@@ -72,9 +53,9 @@ module cpu_bus48_tb;
         .IPL1(!irq2), .IPL0(1'b1), .nBR(1'b1), .nBGACK(1'b1), .SYSTEM_CDx(cd));
     always @(negedge clk_sys) begin
         #1ps;
-        if (offset_ps == 5208 && !reset && !turbo48) begin
-            if ({cas,cus,cls,crw,cf} !== {ref_as,ref_us,ref_ls,ref_rw,ref_fc} ||
-                (!cas && ca !== ref_addr) || (!cas && !crw && cw !== ref_wdata))
+        if (!reset && !turbo48) begin
+            if ({bas,bus_upper,bus_lower,brw,bf} !== {ref_as,ref_us,ref_ls,ref_rw,ref_fc} ||
+                (!bas && ba !== ref_addr) || (!bas && !brw && bw !== ref_wdata))
                 $fatal(1, "Native bus differs from original CPU at address %h", ca);
         end
     end
@@ -89,12 +70,18 @@ module cpu_bus48_tb;
     wire [23:0] addr = {ba,1'b0};
     wire active = !bas && (!bus_upper || !bus_lower);
     int wait_age, writes, benchmark_start, benchmark_end, memory_end, cpu_ticks;
-    int phi1_count, phi2_count;
-    always @(posedge core_clk) begin
-        if (phi1 && phi2) $fatal(1,"Overlapping 68000 phases");
-        if (phi1) phi1_count <= phi1_count + 1;
-        if (phi2) phi2_count <= phi2_count + 1;
+    int native_p_count, native_n_count, fast_p_count, fast_n_count;
+    always @(posedge clk_cpu) begin
+        if (cpu.fast_p) fast_p_count <= fast_p_count + 1;
+        else fast_n_count <= fast_n_count + 1;
     end
+    always @(posedge clk_sys) begin
+        if (native_p && native_n) $fatal(1, "Overlapping native CPU phases");
+        if (native_p) native_p_count <= native_p_count + 1;
+        if (native_n) native_n_count <= native_n_count + 1;
+    end
+    wire [31:0] phi1_count = turbo48 ? fast_p_count : native_p_count;
+    wire [31:0] phi2_count = turbo48 ? fast_n_count : native_n_count;
     bit in_transfer, accepted;
     reg [23:0] held_addr;
     reg [2:0] held_lanes;

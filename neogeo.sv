@@ -1320,49 +1320,14 @@ end
 // On a write, AS leads the byte strobes. Hold DTACK from address selection.
 wire peripheral_wait = cpu_turbo && peripheral_cycle && !nAS && !(&strobe_age);
 
-// Keep the CPU on the existing 96 MHz global clock in every mode. Its
-// phase enables select the speed without consuming a second clock driver.
-wire cpu_enable_p, cpu_enable_n;
-neogeo_cpu_phases cpu_phases (
-    .clk_cpu(CLK_96M), .board_phase(CLK_EN_24M_N), .experimental(cpu_48mhz),
-    .legacy_p(cpu_phi1), .legacy_n(cpu_phi2), .phi1(cpu_enable_p), .phi2(cpu_enable_n)
-);
-wire [23:1] cpu_addr, bridge_addr;
-wire [15:0] cpu_write_data, bridge_write_data, bridge_read_data;
-wire [2:0] cpu_fc, bridge_fc;
-wire cpu_nas, cpu_nuds, cpu_nlds, cpu_rnw;
-wire bridge_nas, bridge_nuds, bridge_nlds, bridge_rnw, bridge_ndtack;
 wire sound_wait;
 wire board_ndtack = nDTACK_ADJ | lspc_wait | peripheral_wait | sound_wait;
-neogeo_cpu_bus48 cpu_bus (
-    .clk_cpu(CLK_96M), .clk_sys(CLK_48M), .reset(!nRESET || !cpu_48mhz),
-    .cpu_addr(cpu_addr), .cpu_write_data(cpu_write_data), .cpu_fc(cpu_fc),
-    .cpu_nas(cpu_nas), .cpu_nuds(cpu_nuds), .cpu_nlds(cpu_nlds), .cpu_rnw(cpu_rnw),
-    .cpu_read_data(bridge_read_data), .cpu_ndtack(bridge_ndtack),
-    .bus_addr(bridge_addr), .bus_write_data(bridge_write_data), .bus_fc(bridge_fc),
-    .bus_nas(bridge_nas), .bus_nuds(bridge_nuds), .bus_nlds(bridge_nlds), .bus_rnw(bridge_rnw),
-    .bus_read_data(FX68K_DATAIN), .bus_ndtack(board_ndtack)
-);
-
-assign M68K_ADDR = cpu_48mhz ? bridge_addr : cpu_addr;
-assign FX68K_DATAOUT = cpu_48mhz ? bridge_write_data : cpu_write_data;
-assign {FC2,FC1,FC0} = cpu_48mhz ? bridge_fc : cpu_fc;
-assign {nAS,nUDS,nLDS,M68K_RW} = cpu_48mhz
-    ? {bridge_nas,bridge_nuds,bridge_nlds,bridge_rnw}
-    : {cpu_nas,cpu_nuds,cpu_nlds,cpu_rnw};
-
-cpu_68k M68KCPU(
-    .CLK(CLK_96M),
-    .CLK_EN_68K_P(cpu_enable_p), .CLK_EN_68K_N(cpu_enable_n),
-    .nRESET(nRESET), .M68K_ADDR(cpu_addr),
-    .FX68K_DATAIN(cpu_48mhz ? bridge_read_data : FX68K_DATAIN),
-    .FX68K_DATAOUT(cpu_write_data),
-    .nLDS(cpu_nlds), .nUDS(cpu_nuds), .nAS(cpu_nas), .M68K_RW(cpu_rnw),
-    .nDTACK(cpu_48mhz ? bridge_ndtack : board_ndtack),
-    .IPL2(1'b1), .IPL1(IPL_OUT[1]), .IPL0(IPL_OUT[0]),
-    .FC2(cpu_fc[2]), .FC1(cpu_fc[1]), .FC0(cpu_fc[0]),
-    .nBG(nBG), .nBR(cpu_48mhz ? 1'b1 : nBR), .nBGACK(cpu_48mhz ? 1'b1 : nBGACK),
-    .SYSTEM_CDx(SYSTEM_CDx)
+neogeo_cpu_modes M68KCPU (
+    .clk_fast(CLK_96M), .clk_board(CLK_48M), .reset(!nRESET), .experimental(cpu_48mhz),
+    .native_p(cpu_phi1), .native_n(cpu_phi2), .system_cd(SYSTEM_CDx),
+    .ipl(IPL_OUT), .nbr(nBR), .nbgack(nBGACK), .nbg(nBG),
+    .read_data(FX68K_DATAIN), .ndtack(board_ndtack), .addr(M68K_ADDR), .write_data(FX68K_DATAOUT),
+    .fc({FC2,FC1,FC0}), .nas(nAS), .nuds(nUDS), .nlds(nLDS), .rnw(M68K_RW)
 );
 
 wire IACK = &{FC2, FC1, FC0};

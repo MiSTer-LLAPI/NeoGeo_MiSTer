@@ -99,22 +99,53 @@ module neogeo_cpu_bus48 (
     end
 endmodule
 
-module neogeo_cpu_phases (
-    input clk_cpu, board_phase, experimental, legacy_p, legacy_n,
-    output phi1, phi2
+// The native CPU has the original direct 48 MHz board connection. The
+// experimental cartridge CPU runs on 96 MHz and can reach the board only
+// through the registered transaction bridge. The mode is latched in reset.
+module neogeo_cpu_modes (
+    input clk_fast, clk_board, reset, experimental, native_p, native_n, system_cd,
+    input [1:0] ipl, input nbr, nbgack, output nbg,
+    input [15:0] read_data, input ndtack,
+    output [23:1] addr, output [15:0] write_data, output [2:0] fc,
+    output nas, nuds, nlds, rnw
 );
-    // The 96/48 MHz PLL outputs have zero relative phase. board_phase
-    // toggles on every rising board clock. Sample midway between its edges
-    // at 96 MHz so that a stable second sample marks the *next* board edge.
-    // This gives the 12/24 MHz CPU its original board-aligned enables.
-    reg phase_sample = 0, native_p = 0, native_n = 0;
-    always @(negedge clk_cpu) begin
-        phase_sample <= board_phase;
-        native_p <= (phase_sample == board_phase) && legacy_p;
-        native_n <= (phase_sample == board_phase) && legacy_n;
-    end
-    reg fast_phase = 0;
-    always @(posedge clk_cpu) fast_phase <= !fast_phase;
-    assign phi1 = experimental ? fast_phase : native_p;
-    assign phi2 = experimental ? !fast_phase : native_n;
+    wire [23:1] native_addr, fast_addr, bridge_addr;
+    wire [15:0] native_write, fast_write, bridge_write, fast_read;
+    wire [2:0] native_fc, fast_fc, bridge_fc;
+    wire native_as, native_us, native_ls, native_rw, native_bg;
+    wire fast_as, fast_us, fast_ls, fast_rw, fast_ack;
+    wire bridge_as, bridge_us, bridge_ls, bridge_rw;
+
+    cpu_68k native_cpu (
+        .CLK(clk_board), .CLK_EN_68K_P(native_p), .CLK_EN_68K_N(native_n),
+        .nRESET(!reset && !experimental), .SYSTEM_CDx(system_cd),
+        .IPL2(1'b1), .IPL1(ipl[1]), .IPL0(ipl[0]), .nBR(nbr), .nBGACK(nbgack), .nBG(native_bg),
+        .M68K_ADDR(native_addr), .FX68K_DATAIN(read_data), .FX68K_DATAOUT(native_write), .nDTACK(ndtack),
+        .FC2(native_fc[2]), .FC1(native_fc[1]), .FC0(native_fc[0]),
+        .nAS(native_as), .nUDS(native_us), .nLDS(native_ls), .M68K_RW(native_rw)
+    );
+
+    reg fast_p = 0;
+    always @(posedge clk_fast) fast_p <= !fast_p;
+    cpu_68k fast_cpu (
+        .CLK(clk_fast), .CLK_EN_68K_P(fast_p), .CLK_EN_68K_N(!fast_p),
+        .nRESET(!reset && experimental), .SYSTEM_CDx(1'b0),
+        .IPL2(1'b1), .IPL1(ipl[1]), .IPL0(ipl[0]), .nBR(1'b1), .nBGACK(1'b1), .nBG(),
+        .M68K_ADDR(fast_addr), .FX68K_DATAIN(fast_read), .FX68K_DATAOUT(fast_write), .nDTACK(fast_ack),
+        .FC2(fast_fc[2]), .FC1(fast_fc[1]), .FC0(fast_fc[0]),
+        .nAS(fast_as), .nUDS(fast_us), .nLDS(fast_ls), .M68K_RW(fast_rw)
+    );
+    neogeo_cpu_bus48 bridge (
+        .clk_cpu(clk_fast), .clk_sys(clk_board), .reset(reset || !experimental),
+        .cpu_addr(fast_addr), .cpu_write_data(fast_write), .cpu_fc(fast_fc),
+        .cpu_nas(fast_as), .cpu_nuds(fast_us), .cpu_nlds(fast_ls), .cpu_rnw(fast_rw),
+        .cpu_read_data(fast_read), .cpu_ndtack(fast_ack),
+        .bus_addr(bridge_addr), .bus_write_data(bridge_write), .bus_fc(bridge_fc),
+        .bus_nas(bridge_as), .bus_nuds(bridge_us), .bus_nlds(bridge_ls), .bus_rnw(bridge_rw),
+        .bus_read_data(read_data), .bus_ndtack(ndtack)
+    );
+    assign {addr, write_data, fc, nas, nuds, nlds, rnw} = experimental
+        ? {bridge_addr, bridge_write, bridge_fc, bridge_as, bridge_us, bridge_ls, bridge_rw}
+        : {native_addr, native_write, native_fc, native_as, native_us, native_ls, native_rw};
+    assign nbg = experimental ? 1'b1 : native_bg;
 endmodule

@@ -6,7 +6,7 @@ The experimental NeoGeo_Turbo48 core combines LLAPI 1.0.0, four selectable SNAC 
 
 Cartridge games start at 12 MHz in AES and MVS modes. Turn **CPU Turbo** on to reveal **CPU Speed**. Select **24 MHz** (the default turbo speed) or **48 MHz Experimental**, then choose **Reset & apply**. Turn **CPU Turbo** off and apply a reset to return to 12 MHz. Neo Geo CD and CDZ use 12 MHz in every case.
 
-The 68000 uses the existing 96 MHz clock. Clock enables select its execution speed. At the experimental setting a transaction bridge exchanges reads and writes with the original peripheral bus. Games that wait on cartridge memory, video or sound can gain less than the change in CPU rate suggests.
+At 12 and 24 MHz the 68000 uses the original board clock and connects directly to the peripheral bus. The 48 MHz cartridge option selects a separate 68000 running on the existing 96 MHz clock. It exchanges reads and writes through a registered bridge. Reset holds the inactive processor. Games that wait on cartridge memory, video or sound can gain less than the change in CPU rate suggests.
 
 - The video controller receives correctly spaced VRAM read and write strobes in Turbo mode. The CPU waits while the video port is recovering. The intervals follow the native 68000 timing described in the [SNK hardware manual](https://www.neogeodev.org/NG.pdf).
 - The SDRAM arbiter prioritizes pending sprite and fixed-layer reads over CPU ROM reads in Turbo mode. An owed refresh remains pending across a busy slot, and reset clears the previous ROM acknowledgement before the first new fetch.
