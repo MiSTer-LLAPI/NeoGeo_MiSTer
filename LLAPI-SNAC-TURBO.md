@@ -4,7 +4,7 @@ The experimental NeoGeo_Turbo48 core combines LLAPI 1.0.0, four selectable SNAC 
 
 ## CPU Turbo
 
-Cartridge games start at 12 MHz in AES and MVS modes. Turn **CPU Turbo** on to reveal **CPU Speed**. Select **24 MHz** (the default turbo speed) or **48 MHz Experimental**, then choose **Reset & apply**. Turn **CPU Turbo** off and apply a reset to return to 12 MHz. Neo Geo CD and CDZ use 12 MHz in every case.
+Cartridge games start at 12 MHz in AES and MVS modes. Turn **CPU Turbo** on to reveal **CPU Speed**. Select **24 MHz** (the default turbo speed) or **48 MHz (Exp.)**, then choose **Reset & apply**. Turn **CPU Turbo** off and apply a reset to return to 12 MHz. Neo Geo CD and CDZ use 12 MHz in every case.
 
 At 12 and 24 MHz the 68000 uses the original board clock and connects directly to the peripheral bus. The 48 MHz cartridge option selects a separate 68000 running on the existing 96 MHz clock. It exchanges reads and writes through a registered bridge. Reset holds the inactive processor. Games that wait on cartridge memory, video or sound can gain less than the change in CPU rate suggests.
 
@@ -22,6 +22,8 @@ For the hardware test, use the same game, BIOS and video settings at each speed.
 On MiSTer, the same cartridge image lost both music and gunfire at 24 MHz. Both returned after resetting at 12 MHz. In simulation, the accelerated 68000 sent the startup command `$07` while the Z80 was still clearing its sound queue after command `$03`. The Z80 read `$07`, then erased it before the main loop could act on it.
 
 In cartridge turbo mode, the core watches for the Z80 reading `$03` and starting its RAM clear. If `$07` arrives during that sequence, the core holds the write until the Z80 finishes enabling interrupts, with a bounded timeout. Tests using the original sound program and the measured turbo bus intervals confirmed that the Z80 consumed `$07` and then wrote to register `$27` on the YM2610. To check audible output, start the first mission, listen for music and fire the weapon at each CPU speed after **Reset & apply**.
+
+On 25 November 2026, Ricardo retested Blazing Star on his MiSTer with experimental build `45588426313`. Music and gunfire both played at 24 MHz and at 48 MHz.
 
 ## USER I/O
 
