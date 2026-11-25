@@ -445,14 +445,12 @@ wire [3:0] autofire_gesture1, autofire_gesture2;
 wire snac_report_ready;
 wire [1:0] autofire_mode1, autofire_mode2, autofire_button1, autofire_button2;
 wire [1:0] autofire_speed1 = status[69:68], autofire_speed2 = status[75:74];
-wire [127:0] autofire_status_update;
-wire autofire_status_set;
+wire autofire_snac_selected = status[48:46] >= 1 && status[48:46] <= 4;
 neogeo_autofire_settings autofire_settings (
-    .clk(clk_sys), .reset(RESET), .status(status),
+    .clk(clk_sys), .reset(RESET), .snac_selected(autofire_snac_selected), .status(status),
     .gesture1(autofire_gesture1), .gesture2(autofire_gesture2),
     .mode1(autofire_mode1), .mode2(autofire_mode2),
-    .button1(autofire_button1), .button2(autofire_button2),
-    .status_in(autofire_status_update), .status_set(autofire_status_set)
+    .button1(autofire_button1), .button2(autofire_button2)
 );
 wire [1:0] menu_autofire = {
     autofire_mode2 == 1 || autofire_mode2 == 2,
@@ -512,7 +510,7 @@ hps_io #(.CONF_STR(CONF_STR), .WIDE(1), .VDNUM(2)) hps_io
 	.ps2_key(ps2_key),
 
 	.status(status),
-	.status_in(autofire_status_update), .status_set(autofire_status_set),				// HPS menu status
+	.status_in(128'd0), .status_set(1'b0),				// HPS menu status
 	.status_menumask({status[22], 6'd0, (SYSTEM_CDx || !status[45]), !menu_autofire[1], !menu_autofire[0], en216p, bk_autosave | ~bk_pending, ~dbg_menu,~SYSTEM_MVS,1'b0,SYSTEM_CDx}),
 
 	.RTC(rtc),

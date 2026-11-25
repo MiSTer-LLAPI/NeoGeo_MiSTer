@@ -111,78 +111,43 @@ module neogeo_menu_autofire (
     assign pad_out = {pad_in[11:8], filtered, pad_in[3:0]};
 endmodule
 
-// Merge gesture updates into the HPS menu status without changing speed
-// or unrelated options. Apply a gesture locally while the host reflects it.
+// SNAC gestures override the active selection locally. A manual edit to
+// either selector takes precedence for that player. Speed remains menu-owned.
 module neogeo_autofire_settings (
-    input clk, reset,
+    input clk, reset, snac_selected,
     input [127:0] status,
     input [3:0] gesture1, gesture2,
-    output [1:0] mode1, mode2, button1, button2,
-    output reg [127:0] status_in,
-    output status_set
+    output [1:0] mode1, mode2, button1, button2
 );
-    wire [3:0] host [0:1];
-    // MiSTer echoes status in 16-bit writes. Keep both players in word 4
-    // so a new mode can never appear alongside the previous button.
-    assign host[0] = status[67:64];
-    assign host[1] = status[73:70];
+    wire [3:0] menu [0:1];
     wire [3:0] gesture [0:1];
+    wire [3:0] effective [0:1];
+    assign menu[0] = status[67:64];
+    assign menu[1] = status[73:70];
     assign gesture[0] = gesture1;
     assign gesture[1] = gesture2;
-    wire [3:0] effective [0:1];
-    wire [3:0] updated [0:1];
-    wire [1:0] waiting_for_echo;
-    reg last_status_set = 0;
-    always @(posedge clk) last_status_set <= status_set;
 
-
-    genvar p;
-    generate
-    for (p = 0; p < 2; p = p + 1) begin : player
-        reg local_selection = 0, awaiting = 0;
-        reg [3:0] requested = 0, submitted = 0;
-        assign waiting_for_echo[p] = awaiting && host[p] != submitted;
+    for (genvar p = 0; p < 2; p = p + 1) begin : player
+        reg override_active = 0;
+        reg [3:0] local_selection = 0;
+        reg [3:0] previous_menu = 0;
         wire [1:0] target = gesture[p][3] ? 2'd3 : gesture[p][2] ? 2'd2 :
                             gesture[p][1] ? 2'd1 : 2'd0;
-        assign effective[p] = local_selection ? requested : host[p];
+        assign effective[p] = snac_selected && override_active &&
+                              menu[p] == previous_menu ? local_selection : menu[p];
         wire same_active = effective[p][1:0] == target &&
                            (effective[p][3:2] == 1 || effective[p][3:2] == 2);
-        assign updated[p] = |gesture[p] ? {same_active ? 2'd0 : 2'd1, target} : effective[p];
-
         always @(posedge clk) begin
-            if (reset) begin
-                local_selection <= 0;
-                awaiting <= 0;
-            end else begin
-                if (|gesture[p]) begin
-                    requested <= updated[p];
-                    local_selection <= 1;
-                end else if (!waiting_for_echo[p] && host[p] == requested) begin
-                    local_selection <= 0;
-                end
-
-                if (status_set) begin
-                    submitted <= updated[p];
-                    awaiting <= updated[p] != host[p];
-                end else if (!waiting_for_echo[p]) begin
-                    awaiting <= 0;
-                end
-            end
+            previous_menu <= menu[p];
+            if (reset || !snac_selected)
+                override_active <= 0;
+            else if (|gesture[p]) begin
+                local_selection <= {same_active ? 2'd0 : 2'd1, target};
+                override_active <= 1;
+            end else if (menu[p] != previous_menu)
+                override_active <= 0;
         end
     end
-
-    endgenerate
-
     assign {mode1, button1} = effective[0];
     assign {mode2, button2} = effective[1];
-    // Main owns a single request slot. If a new gesture arrives while its
-    // previous echo is in flight, apply it locally and send the latest
-    // selection once the slot is free. hps_io detects a rising strobe.
-    assign status_set = !reset && !last_status_set && !(|waiting_for_echo) &&
-                        (updated[0] != host[0] || updated[1] != host[1]);
-    always @* begin
-        status_in = status;
-        status_in[67:64] = updated[0];
-        status_in[73:70] = updated[1];
-    end
 endmodule

@@ -1,7 +1,7 @@
-name: NeoGeo Turbo LLAPI 1.2 Test 1
+name: NeoGeo Turbo LLAPI 1.2 SNAC local
 on:
   push:
-    branches: [test-neogeo-turbo-llapi-1-2-test1]
+    branches: [test-neogeo-turbo-llapi-1-2-snac-local]
 permissions:
   contents: read
 jobs:
@@ -37,15 +37,6 @@ jobs:
           vvp /tmp/menu_autofire
           iverilog -g2012 -s user_port_tb -o /tmp/user rtl/neogeo_snac_autofire.sv rtl/io/neogeo_user_port.sv rtl/io/neogeo_snac*.sv tests/user_port_tb.sv
           vvp /tmp/user
-      - name: Verify the MiSTer status transfer for autofire
-        run: |
-          docker run --rm -v "$PWD:/src:ro" -w /src --entrypoint /bin/sh \
-            verilator/verilator:v5.054@sha256:da7845c38c2ab84133661a1b1e2d717d028fe0bc629cc06c77bb80571e610448 -ec '
-              verilator --version
-              verilator --binary --timing -Wno-fatal -Wno-PINMISSING -Wno-PROCASSWIRE \
-                --top-module autofire_hps_tb --Mdir /tmp/autofire_hps \
-                tests/autofire_hps_tb.sv rtl/neogeo_snac_autofire.sv sys/hps_io.sv
-              /tmp/autofire_hps/Vautofire_hps_tb'
       - name: Check sprite writes on the native video controller
         run: |
           docker run --rm -v "$PWD:/src:ro" -w /src --entrypoint /bin/sh \
@@ -218,13 +209,13 @@ jobs:
       - name: Stage test core after timing acceptance
         run: |
           mkdir -p test
-          cp output_files/NeoGeo.rbf test/NeoGeo_Turbo_LLAPI12_Test1.rbf
-          (cd test && sha256sum NeoGeo_Turbo_LLAPI12_Test1.rbf > SHA256SUMS)
+          cp output_files/NeoGeo.rbf test/NeoGeo_Turbo_LLAPI12_SNAC_Local.rbf
+          (cd test && sha256sum NeoGeo_Turbo_LLAPI12_SNAC_Local.rbf > SHA256SUMS)
       - name: Save RBF and reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: NeoGeo-Turbo-LLAPI12-Test1
+          name: NeoGeo-Turbo-LLAPI12-SNAC-Local
           path: |
             test/
             output_files/*.rpt

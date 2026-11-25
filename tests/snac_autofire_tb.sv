@@ -12,18 +12,10 @@ module snac_autofire_tb;
     localparam [127:0] INITIAL = (128'd1 << 127) | (128'd2 << 68) | (128'd1 << 74) | 128'h0001_a800_0000_0040;
     localparam [127:0] SELECTORS = (128'd15 << 64) | (128'd15 << 70);
     reg [127:0] host_status = INITIAL;
-    wire [127:0] update_status;
-    wire status_set;
-    integer writes = 0;
-    always @(posedge clk) if (status_set) begin
-        writes <= writes + 1;
-        host_status <= update_status;
-    end
     neogeo_autofire_settings settings(
-        .clk(clk), .reset(reset), .status(host_status),
+        .clk(clk), .reset(reset), .snac_selected(1'b1), .status(host_status),
         .gesture1(event_button[0]), .gesture2(event_button[1]),
-        .mode1(mode[0]), .mode2(mode[1]), .button1(selected_button[0]), .button2(selected_button[1]),
-        .status_in(update_status), .status_set(status_set)
+        .mode1(mode[0]), .mode2(mode[1]), .button1(selected_button[0]), .button2(selected_button[1])
     );
     wire [1:0] speed [0:1];
     assign speed[0] = host_status[69:68];
@@ -134,20 +126,20 @@ module snac_autofire_tb;
         steady(0,12'hfff,D,"Simultaneous chords inadvertently programmed turbo");
         release_pad(0);
 
-        if (writes != 0) $fatal(1, "Ordinary chords must not update the OSD");
+        if ({mode[0],mode[1]} != 0) $fatal(1, "Ordinary chords must not update the OSD");
         raw[0]=A | OTHER; repeat (4) frame;
         raw[0]=A | OTHER | START; frame;
         raw[0]=A | OTHER; repeat (4) frame;
         tap(0); tap(0);
-        if (writes != 0) $fatal(1, "Two taps and a glitch must not update the OSD");
+        if ({mode[0],mode[1]} != 0) $fatal(1, "Two taps and a glitch must not update the OSD");
         tap(0);
-        if (host_status[67:66] != 1 || host_status[65:64] != 0)
-            $fatal(1, "P1 A must select Hold in the OSD");
+        if (mode[0] != 1 || selected_button[0] != 0)
+            $fatal(1, "P1 A must select Hold locally");
         pulsing(0,A,1);
         release_pad(0);
 
         raw[0]=B; repeat (4) frame; repeat (3) tap(0);
-        if (host_status[67:66] != 1 || host_status[65:64] != 1)
+        if (mode[0] != 1 || selected_button[0] != 1)
             $fatal(1, "P1 B must replace A");
         pulsing(0,B,1);
         raw[0]=A|B; steady(0,A,A,"Previous button must pass through");
@@ -156,13 +148,13 @@ module snac_autofire_tb;
         raw[1]=D; repeat (4) frame; tap(1); tap(1);
         active=0; repeat (4) frame; active=1; repeat (4) frame;
         tap(1);
-        if (host_status[73:72] != 0) $fatal(1, "Partial P2 gesture survived interruption");
+        if (mode[1] != 0) $fatal(1, "Partial P2 gesture survived interruption");
         tap(1); tap(1);
-        if (host_status[73:72] != 1 || host_status[71:70] != 3)
+        if (mode[1] != 1 || selected_button[1] != 3)
             $fatal(1, "P2 D must independently select Hold");
         pulsing(1,D,4);
         repeat (3) tap(0);
-        if (host_status[67:66] != 0 || host_status[73:72] != 1 || host_status[65:64] != 1)
+        if (mode[0] != 0 || mode[1] != 1 || selected_button[0] != 1)
             $fatal(1, "Repeating the same gesture must turn off only that player");
         steady(0,B,B,"P1 Off");
         pulsing(1,D,4);
@@ -174,11 +166,11 @@ module snac_autofire_tb;
             raw[0] = B | START; raw[1] = D | START; repeat (4) frame;
             raw[0] = B; raw[1] = D; repeat (4) frame;
         end
-        if (host_status[67:64] !== 4'b0101 || host_status[73:70] !== 4'b0011)
+        if ({mode[0],selected_button[0]} !== 4'b0101 || {mode[1],selected_button[1]} !== 4'b0011)
             $fatal(1,"Simultaneous gestures lost a player or ignored the menu change");
-        if ((host_status & ~SELECTORS) !== (INITIAL & ~SELECTORS))
+        if (host_status !== (INITIAL | (128'ha << 64)))
             $fatal(1, "Gesture changed speed or another menu option");
-        $display("PASS SNAC gesture updates shared OSD, replaces button, toggles off and preserves speed and P1/P2");
+        $display("PASS SNAC gesture works locally, replaces button, toggles off and preserves speed and P1/P2");
         $finish;
     end
 endmodule
